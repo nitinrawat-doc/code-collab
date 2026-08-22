@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.production
+server/.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Temp & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+temp_*
+*.tmp
+
+# Coverage
+coverage/
