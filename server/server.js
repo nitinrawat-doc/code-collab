@@ -44,15 +44,12 @@ const io = new Server(server, {
 initSocket(io);
 app.set('io', io); // make io accessible in controllers via req.app.get('io')
 
-const { initTunnel } = require('./src/services/tunnel.service');
 
 const start = async () => {
   await connectDB();
   server.listen(PORT, () => {
     console.log(`[server] Running on http://localhost:${PORT}`);
     console.log(`[server] Accepting Socket.IO from ${CLIENT_URL}`);
-    // Start SSH tunnel to serveo.net (non-blocking — connects in background)
-    initTunnel(PORT || 5000);
   });
 };
 
