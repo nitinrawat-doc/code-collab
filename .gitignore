@@ -25,6 +25,7 @@ Thumbs.db
 .idea/
 temp_*
 *.tmp
+vite.config.js.timestamp-*
 
 # Coverage
 coverage/

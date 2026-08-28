@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage';
 import RoomPage from './pages/RoomPage';
 import JoinRoomPage from './pages/JoinRoomPage';
 import ProblemsPage from './pages/ProblemsPage';
+import InviteAcceptPage from './pages/InviteAcceptPage';
 
 // Protected route wrapper — redirects unauthenticated users to /signup first
 function ProtectedRoute({ children }) {
@@ -51,6 +52,9 @@ function AppRoutes() {
         }
       />
       <Route path="/join/:roomCode" element={<ProtectedRoute><JoinRoomPage /></ProtectedRoute>} />
+
+      {/* Invite accept — PUBLIC route, handles auth internally */}
+      <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
       {/* Default */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

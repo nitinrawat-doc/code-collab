@@ -1,13 +1,14 @@
 /**
  * app.js
- * Express application setup — middleware, routes, error handling.
- * Does NOT start the HTTP server (that's server.js).
+ * Express application setup — middleware, routes, static frontend serving, error handling.
  */
-require('./config/env'); // validate env vars first
+require('./config/env');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
+const path = require('path');
+const fs = require('fs');
 
 const { apiLimiter } = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
@@ -20,10 +21,14 @@ const problemRoutes = require('./routes/problem.routes');
 const sessionRoutes = require('./routes/session.routes');
 const historyRoutes = require('./routes/history.routes');
 const executeRoutes = require('./routes/execute.routes');
+const inviteRoutes = require('./routes/invite.routes');
 
 const { CLIENT_URL } = require('./config/env');
 
 const app = express();
+
+// Trust the first proxy (needed when behind tunnel/ngrok/serveo — fixes rate-limiter X-Forwarded-For)
+app.set('trust proxy', 1);
 
 const allowedOrigins = [
   CLIENT_URL,
@@ -34,17 +39,16 @@ const allowedOrigins = [
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.includes(origin)) return true;
-  // Match localhost, 127.0.0.1, or local LAN IP (e.g. 192.168.x.x, 10.x.x.x) on ports 5170-5179
   if (/^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+):517[0-9]$/.test(origin)) return true;
-  // Match local tunnels or cloud deployments
-  if (origin.endsWith('.loca.lt') || origin.endsWith('.ngrok-free.app') || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) return true;
+  if (origin.endsWith('.loca.lt') || origin.endsWith('.ngrok-free.app') || origin.endsWith('.ngrok.io') || origin.endsWith('.serveousercontent.com') || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) return true;
   return false;
 };
 
-// Security headers — allow cross-origin resource policy for API client
+// Security headers
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: false, // allow loading scripts/styles when served via tunnel
   })
 );
 
@@ -59,7 +63,7 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Bypass-Tunnel-Reminder', 'bypass-tunnel-reminder'],
   })
 );
 
@@ -68,15 +72,22 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Serve client production static files if client/dist exists
+const clientDistPath = path.join(__dirname, '../../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+}
+
 // Global rate limiting
 app.use('/api', apiLimiter);
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// Network info check for sharing LAN IP invite links
-app.get('/api/network-info', (req, res) => {
+// Network info check for sharing LAN IP and Public HTTPS Tunnel invite links
+app.get('/api/network-info', async (req, res) => {
   const os = require('os');
+  const { getPublicTunnelUrl, getPublicIp } = require('./services/tunnel.service');
   const interfaces = os.networkInterfaces();
   const ips = [];
   for (const name of Object.keys(interfaces)) {
@@ -86,9 +97,12 @@ app.get('/api/network-info', (req, res) => {
       }
     }
   }
+  const publicIp = await getPublicIp();
   res.json({
     success: true,
     localIp: ips[0] || 'localhost',
+    publicTunnelUrl: getPublicTunnelUrl() || '',
+    publicIp: publicIp || '',
     ips,
   });
 });
@@ -101,6 +115,17 @@ app.use('/api/problems', problemRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/execute', executeRoutes);
+app.use('/api/invites', inviteRoutes);
+
+// SPA fallback: render index.html for all non-API client routes
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  const indexPath = path.join(clientDistPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  next();
+});
 
 // 404 handler
 app.use((req, res) => {

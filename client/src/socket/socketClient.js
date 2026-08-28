@@ -1,19 +1,28 @@
 /**
  * socket/socketClient.js
- * Singleton Socket.IO client with dynamic host IP resolution for cross-device support.
+ * Singleton Socket.IO client with correct server URL resolution for cross-device support.
+ *
+ * URL resolution strategy (mirrors api.js):
+ *  - localhost / 127.0.0.1  → direct to VITE_SERVER_URL (dev)
+ *  - No explicit port (tunnel, ngrok)  → window.location.origin (same host, standard port)
+ *  - Explicit port (LAN e.g. :5173)    → same host but port 5000
  */
 import { io } from 'socket.io-client';
 
 const getServerUrl = () => {
-  if (import.meta.env.VITE_SERVER_URL) {
-    const rawUrl = import.meta.env.VITE_SERVER_URL;
-    if (rawUrl.includes('localhost') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return rawUrl.replace('localhost', window.location.hostname);
-    }
-    return rawUrl;
+  const { protocol, hostname, port } = window.location;
+
+  // Local dev — use VITE_SERVER_URL or fallback to :5000
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
   }
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
+
+  // Tunnel / deployed — no explicit port, same origin
+  if (!port || port === '80' || port === '443') {
+    return `${protocol}//${hostname}`;
+  }
+
+  // LAN explicit port → backend is on :5000
   return `${protocol}//${hostname}:5000`;
 };
 
@@ -39,6 +48,9 @@ export const connectSocket = (token) => {
 
   socket = io(serverUrl, {
     auth: { token: authToken },
+    extraHeaders: {
+      'Bypass-Tunnel-Reminder': 'true',
+    },
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: 5,

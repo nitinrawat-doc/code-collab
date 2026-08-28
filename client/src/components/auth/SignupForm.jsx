@@ -5,7 +5,7 @@ import { Toast } from '../ui/Toast';
 import { Spinner } from '../ui/Spinner';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-export function SignupForm() {
+export function SignupForm({ redirectAfter } = {}) {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -13,7 +13,8 @@ export function SignupForm() {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
 
-  const redirectTarget = searchParams.get('redirect') || '/dashboard';
+  // redirectAfter prop takes priority over query param
+  const redirectTarget = redirectAfter || searchParams.get('redirect') || '/dashboard';
 
   const handleSubmit = async (e) => {
     e.preventDefault();

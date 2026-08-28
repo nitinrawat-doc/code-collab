@@ -25,4 +25,6 @@ module.exports = {
   JUDGE0_API_URL: process.env.JUDGE0_API_URL || 'https://judge0-ce.p.rapidapi.com',
   JUDGE0_API_KEY: process.env.JUDGE0_API_KEY || null,
   JUDGE0_API_HOST: process.env.JUDGE0_API_HOST || 'judge0-ce.p.rapidapi.com',
+  // Tunnel: fixed subdomain for serveo.net → https://<TUNNEL_SUBDOMAIN>.serveo.net
+  TUNNEL_SUBDOMAIN: process.env.TUNNEL_SUBDOMAIN || 'codecollab-live',
 };
