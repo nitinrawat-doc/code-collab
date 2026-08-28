@@ -9,7 +9,7 @@ const { NODE_ENV } = require('../config/env');
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: NODE_ENV === 'production',
-  sameSite: NODE_ENV === 'production' ? 'strict' : 'lax',
+  sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };
 
@@ -36,7 +36,7 @@ const login = async (req, res, next) => {
 };
 
 const logout = (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax' });
+  res.clearCookie('token', COOKIE_OPTIONS);
   res.json({ success: true, message: 'Logged out successfully' });
 };
 

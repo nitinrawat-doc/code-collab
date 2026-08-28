@@ -33,6 +33,18 @@ const api = axios.create({
   },
 });
 
+// Request interceptor — attach JWT from localStorage if available (fixes cross-site cookie restrictions in production)
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 // Response interceptor — prevent hard refresh loops on auth check endpoints
 api.interceptors.response.use(
   (res) => res,

@@ -8,17 +8,18 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount, verify session via /api/auth/me (uses HttpOnly cookie)
+  // On mount, verify session via /api/auth/me
   useEffect(() => {
     const verify = async () => {
       try {
         const { data } = await authService.getMe();
         setUser(data.user);
-        // /me now returns a fresh token so socket can reconnect after page refresh
         if (data.token) {
+          localStorage.setItem('token', data.token);
           connectSocket(data.token);
         }
       } catch {
+        localStorage.removeItem('token');
         setUser(null);
       } finally {
         setLoading(false);
@@ -30,19 +31,25 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (credentials) => {
     const { data } = await authService.login(credentials);
     setUser(data.user);
-    // Use the token returned in the response body for socket auth
-    connectSocket(data.token);
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      connectSocket(data.token);
+    }
     return data.user;
   }, []);
 
   const register = useCallback(async (credentials) => {
     const { data } = await authService.register(credentials);
     setUser(data.user);
-    connectSocket(data.token);
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      connectSocket(data.token);
+    }
     return data.user;
   }, []);
 
   const logout = useCallback(async () => {
+    localStorage.removeItem('token');
     try { await authService.logout(); } catch { /* ignore */ }
     setUser(null);
     disconnectSocket();
