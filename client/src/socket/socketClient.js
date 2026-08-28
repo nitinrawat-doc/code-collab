@@ -10,20 +10,16 @@
 import { io } from 'socket.io-client';
 
 const getServerUrl = () => {
-  const { protocol, hostname, port } = window.location;
+  const { hostname } = window.location;
 
-  // Local dev — use VITE_SERVER_URL or fallback to :5000
+  // Local development
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
+    return (import.meta.env.VITE_SERVER_URL || 'http://localhost:5000').replace(/\/$/, '');
   }
 
-  // Tunnel / deployed — no explicit port, same origin
-  if (!port || port === '80' || port === '443') {
-    return `${protocol}//${hostname}`;
-  }
-
-  // LAN explicit port → backend is on :5000
-  return `${protocol}//${hostname}:5000`;
+  // Production / deployed frontend
+  const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+  return serverUrl ? serverUrl.replace(/\/$/, '') : window.location.origin;
 };
 
 let socket = null;

@@ -20,7 +20,8 @@ const getApiBaseUrl = () => {
   }
 
   // Production / deployed frontend
-  return `${import.meta.env.VITE_SERVER_URL}/api`;
+  const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+  return serverUrl ? `${serverUrl.replace(/\/$/, '')}/api` : '/api';
 };
 
 const api = axios.create({
