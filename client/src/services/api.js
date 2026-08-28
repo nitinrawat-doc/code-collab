@@ -12,22 +12,15 @@
 import axios from 'axios';
 
 const getApiBaseUrl = () => {
-  const { protocol, hostname, port } = window.location;
+  const { hostname } = window.location;
 
-  // Local dev — use VITE_SERVER_URL or fallback to :5000
+  // Local development
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return (import.meta.env.VITE_SERVER_URL || 'http://localhost:5000') + '/api';
   }
 
-  // Served without an explicit port (tunnel, ngrok, deployed — standard 80/443)
-  // Backend is on the SAME host/origin; just append /api
-  if (!port || port === '80' || port === '443') {
-    return `${protocol}//${hostname}/api`;
-  }
-
-  // LAN / explicit port (e.g. phone opened http://192.168.x.x:5173)
-  // Backend runs on :5000 on the same machine
-  return `${protocol}//${hostname}:5000/api`;
+  // Production / deployed frontend
+  return `${import.meta.env.VITE_SERVER_URL}/api`;
 };
 
 const api = axios.create({
