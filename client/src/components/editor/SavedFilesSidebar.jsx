@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { historyService } from '../../services/sessionService';
 import { useRoom } from '../../context/RoomContext';
 import { useToast } from '../../hooks/useToast';
@@ -9,6 +9,8 @@ import {
   buildDirectoryTree,
   readLocalFile,
   writeLocalFile,
+  createLocalFile,
+  createLocalDirectory,
 } from '../../services/fileSystem.service';
 
 const LANG_BADGES = {
@@ -37,6 +39,19 @@ export function SavedFilesSidebar({
   const [explorerTab, setExplorerTab] = useState('local'); // 'local' | 'room'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowAddMenu(false);
+      }
+    };
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const fetchSavedFiles = useCallback(async () => {
     if (!roomCode) return;
@@ -54,6 +69,85 @@ export function SavedFilesSidebar({
   useEffect(() => {
     fetchSavedFiles();
   }, [fetchSavedFiles, refreshKey]);
+
+  // Handle New File Creation from Explorer Header
+  const handleHeaderCreateFile = async () => {
+    setShowAddMenu(false);
+    const fileName = prompt('Enter new file name (e.g. main.cpp, utils.h, app.py, index.js):');
+    if (!fileName || !fileName.trim()) return;
+    const cleanName = fileName.trim();
+
+    if (explorerTab === 'local') {
+      if (!rootDirectoryHandle) {
+        showError('Open a local project folder first before creating local files.');
+        return;
+      }
+      try {
+        const fileHandle = await createLocalFile(rootDirectoryHandle, cleanName);
+        success(`Created local file: ${cleanName}`);
+        await refreshLocalTree();
+
+        // Auto-open in Monaco
+        const ext = cleanName.split('.').pop();
+        handleSelectLocalFile({
+          id: cleanName,
+          name: cleanName,
+          kind: 'file',
+          handle: fileHandle,
+          relativePath: cleanName,
+          language: ext,
+        });
+      } catch (err) {
+        showError(err.message || 'Failed to create local file');
+      }
+    } else {
+      // Room Files mode
+      try {
+        const ext = cleanName.split('.').pop()?.toLowerCase();
+        const lang = ext === 'cpp' || ext === 'h' ? 'cpp' : ext === 'py' ? 'python' : ext === 'java' ? 'java' : 'javascript';
+        await historyService.save(roomCode, {
+          code: '// New file created in room\n',
+          language: lang,
+          label: cleanName,
+        });
+
+        const newVer = version + 1;
+        setCode('// New file created in room\n');
+        setLanguage(lang);
+        setVersion(newVer);
+        emitCodeChange(roomCode, '// New file created in room\n', lang, newVer);
+
+        await fetchSavedFiles();
+        success(`Created room file: ${cleanName}`);
+      } catch (err) {
+        showError('Failed to create file in room');
+      }
+    }
+  };
+
+  // Handle New Directory Creation from Explorer Header
+  const handleHeaderCreateDirectory = async () => {
+    setShowAddMenu(false);
+    const dirName = prompt('Enter new folder name:');
+    if (!dirName || !dirName.trim()) return;
+    const cleanName = dirName.trim();
+
+    if (explorerTab === 'local') {
+      if (!rootDirectoryHandle) {
+        showError('Open a local project folder first before creating local folders.');
+        return;
+      }
+      try {
+        await createLocalDirectory(rootDirectoryHandle, cleanName);
+        success(`Created local folder: ${cleanName}`);
+        await refreshLocalTree();
+      } catch (err) {
+        showError(err.message || 'Failed to create folder');
+      }
+    } else {
+      showError('Folder hierarchies in Room mode are managed through local project import.');
+    }
+  };
 
   // Handle local file selection
   const handleSelectLocalFile = async (node) => {
@@ -149,14 +243,41 @@ export function SavedFilesSidebar({
           <span>Explorer</span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 relative" ref={menuRef}>
+          {/* Header New (+ Button) Dropdown */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowAddMenu(!showAddMenu); }}
+            title="Create New File or Folder"
+            className="p-1 rounded hover:bg-surface-700 text-brand-400 hover:text-white transition-colors text-xs font-bold"
+          >
+            ➕
+          </button>
+
+          {showAddMenu && (
+            <div className="absolute right-0 top-8 z-50 w-36 bg-surface-800 border border-surface-600 rounded-lg shadow-xl py-1 text-slate-200 text-xs font-mono">
+              <button
+                onClick={handleHeaderCreateFile}
+                className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
+              >
+                <span>+📄</span> New File
+              </button>
+              <button
+                onClick={handleHeaderCreateDirectory}
+                className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
+              >
+                <span>+📁</span> New Folder
+              </button>
+            </div>
+          )}
+
           <button
             onClick={onOpenLocalFolder}
             title="Open Local Folder / Project"
-            className="p-1 rounded hover:bg-surface-700 text-brand-400 hover:text-white transition-colors text-xs font-bold"
+            className="p-1 rounded hover:bg-surface-700 text-slate-300 hover:text-white transition-colors text-xs font-bold"
           >
             📂 Open
           </button>
+
           <button
             onClick={onToggle}
             title="Close Explorer"

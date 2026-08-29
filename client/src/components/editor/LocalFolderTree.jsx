@@ -1,18 +1,11 @@
 /**
  * components/editor/LocalFolderTree.jsx
  *
- * Tree explorer for locally opened projects.
- * Features:
- *  - Hierarchical folder/file rendering with expand/collapse toggles (▶ / ▼)
- *  - File click loads content into Monaco Editor
- *  - Local File & Directory CRUD: New File, New Folder, Rename, Delete, Refresh
- *  - Opt-in "Import Project to Room" button to sync files into the collaborative room
+ * Tree explorer for locally opened projects with right-click context menus.
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  readLocalFile,
-  writeLocalFile,
   createLocalFile,
   createLocalDirectory,
   removeLocalEntry,
@@ -25,13 +18,12 @@ function TreeNode({
   depth = 0,
   activeFileId,
   onSelectFile,
-  onRefresh,
   onNewFile,
   onNewFolder,
   onDelete,
+  onContextMenu,
 }) {
   const [isExpanded, setIsExpanded] = useState(depth === 0);
-
   const paddingLeft = `${depth * 14 + 8}px`;
 
   if (node.kind === 'directory') {
@@ -40,6 +32,7 @@ function TreeNode({
         <div
           style={{ paddingLeft }}
           onClick={() => setIsExpanded(!isExpanded)}
+          onContextMenu={(e) => onContextMenu(e, node)}
           className="group flex items-center justify-between py-1 px-2 rounded hover:bg-surface-700/70 text-slate-300 hover:text-white cursor-pointer text-xs transition-colors"
         >
           <div className="flex items-center gap-1.5 min-w-0">
@@ -75,10 +68,10 @@ function TreeNode({
                 depth={depth + 1}
                 activeFileId={activeFileId}
                 onSelectFile={onSelectFile}
-                onRefresh={onRefresh}
                 onNewFile={onNewFile}
                 onNewFolder={onNewFolder}
                 onDelete={onDelete}
+                onContextMenu={onContextMenu}
               />
             ))}
           </div>
@@ -93,6 +86,7 @@ function TreeNode({
     <div
       style={{ paddingLeft }}
       onClick={() => onSelectFile(node)}
+      onContextMenu={(e) => onContextMenu(e, node)}
       className={`group flex items-center justify-between py-1 px-2 rounded cursor-pointer text-xs font-mono transition-colors ${
         isActive
           ? 'bg-brand-500/20 text-brand-300 border border-brand-500/40 font-semibold'
@@ -124,44 +118,78 @@ export function LocalFolderTree({
   onImportToRoom,
 }) {
   const { success, error: showError } = useToast();
+  const [contextMenu, setContextMenu] = useState(null);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  const handleContextMenu = (e, node) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      node,
+    });
+  };
 
   const handleNewFile = async (targetDirHandle = rootHandle) => {
+    setContextMenu(null);
     const fileName = prompt('Enter new file name (e.g. main.cpp, script.js):');
     if (!fileName || !fileName.trim()) return;
+
     try {
-      await createLocalFile(targetDirHandle, fileName.trim());
-      success(`Created local file: ${fileName}`);
-      onRefresh();
+      const createdFileHandle = await createLocalFile(targetDirHandle, fileName.trim());
+      success(`Created file: ${fileName}`);
+      await onRefresh();
+
+      // Automatically select & open the new file in Monaco Editor
+      const newPath = `${targetDirHandle.name === rootHandle.name ? '' : targetDirHandle.name + '/'}${fileName.trim()}`;
+      onSelectFile({
+        id: newPath,
+        name: fileName.trim(),
+        kind: 'file',
+        handle: createdFileHandle,
+        relativePath: newPath,
+        language: fileName.split('.').pop(),
+      });
     } catch (err) {
-      showError(`Failed to create file: ${err.message}`);
+      showError(err.message || 'Failed to create file');
     }
   };
 
   const handleNewFolder = async (targetDirHandle = rootHandle) => {
+    setContextMenu(null);
     const folderName = prompt('Enter new folder name:');
     if (!folderName || !folderName.trim()) return;
+
     try {
       await createLocalDirectory(targetDirHandle, folderName.trim());
       success(`Created directory: ${folderName}`);
-      onRefresh();
+      await onRefresh();
     } catch (err) {
-      showError(`Failed to create directory: ${err.message}`);
+      showError(err.message || 'Failed to create directory');
     }
   };
 
   const handleDelete = async (node) => {
+    setContextMenu(null);
     if (!confirm(`Are you sure you want to delete '${node.name}'?`)) return;
     try {
       await removeLocalEntry(rootHandle, node.relativePath);
       success(`Deleted ${node.name}`);
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       showError(`Failed to delete: ${err.message}`);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-surface-850 select-none text-xs">
+    <div className="flex flex-col h-full bg-surface-850 select-none text-xs relative">
       {/* Explorer Tree Toolbar */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-surface-800 border-b border-surface-600 text-[11px]">
         <span className="font-semibold text-slate-200 uppercase tracking-wider truncate">
@@ -207,7 +235,10 @@ export function LocalFolderTree({
       )}
 
       {/* Directory Tree Content */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div
+        onContextMenu={(e) => handleContextMenu(e, { kind: 'directory', handle: rootHandle, name: rootHandle?.name })}
+        className="flex-1 overflow-y-auto p-2 space-y-1"
+      >
         {treeNodes.length === 0 ? (
           <div className="text-center py-6 text-slate-500 italic text-[11px]">
             Folder is empty. Click +📄 to create a file.
@@ -219,14 +250,62 @@ export function LocalFolderTree({
               node={node}
               activeFileId={activeFile?.id}
               onSelectFile={onSelectFile}
-              onRefresh={onRefresh}
               onNewFile={handleNewFile}
               onNewFolder={handleNewFolder}
               onDelete={handleDelete}
+              onContextMenu={handleContextMenu}
             />
           ))
         )}
       </div>
+
+      {/* Right-Click Context Menu Floating Portal */}
+      {contextMenu && (
+        <div
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 w-44 bg-surface-800 border border-surface-600 rounded-lg shadow-2xl py-1 text-slate-200 text-xs font-mono select-none"
+        >
+          {contextMenu.node.kind === 'directory' ? (
+            <>
+              <button
+                onClick={() => handleNewFile(contextMenu.node.handle)}
+                className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
+              >
+                <span>+📄</span> New File
+              </button>
+              <button
+                onClick={() => handleNewFolder(contextMenu.node.handle)}
+                className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
+              >
+                <span>+📁</span> New Folder
+              </button>
+              {contextMenu.node.handle !== rootHandle && (
+                <button
+                  onClick={() => handleDelete(contextMenu.node)}
+                  className="w-full text-left px-3 py-1.5 hover:bg-red-500/20 text-red-400 flex items-center gap-2 border-t border-surface-700"
+                >
+                  <span>🗑</span> Delete Folder
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => { setContextMenu(null); onSelectFile(contextMenu.node); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
+              >
+                <span>📄</span> Open File
+              </button>
+              <button
+                onClick={() => handleDelete(contextMenu.node)}
+                className="w-full text-left px-3 py-1.5 hover:bg-red-500/20 text-red-400 flex items-center gap-2 border-t border-surface-700"
+              >
+                <span>🗑</span> Delete File
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

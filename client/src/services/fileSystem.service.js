@@ -54,6 +54,21 @@ export const isBinaryFile = (fileName = '') => {
   return BINARY_EXTENSIONS.has(ext);
 };
 
+export const checkEntryExists = async (dirHandle, entryName) => {
+  if (!dirHandle || !entryName) return false;
+  try {
+    await dirHandle.getFileHandle(entryName);
+    return true;
+  } catch {
+    try {
+      await dirHandle.getDirectoryHandle(entryName);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+};
+
 /**
  * Recursively builds hierarchical tree from FileSystemDirectoryHandle
  */
@@ -114,6 +129,10 @@ export const writeLocalFile = async (fileHandle, content) => {
 };
 
 export const createLocalFile = async (dirHandle, fileName) => {
+  const exists = await checkEntryExists(dirHandle, fileName);
+  if (exists) {
+    throw new Error(`A file or folder named '${fileName}' already exists.`);
+  }
   const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write('');
@@ -122,6 +141,10 @@ export const createLocalFile = async (dirHandle, fileName) => {
 };
 
 export const createLocalDirectory = async (dirHandle, dirName) => {
+  const exists = await checkEntryExists(dirHandle, dirName);
+  if (exists) {
+    throw new Error(`A file or folder named '${dirName}' already exists.`);
+  }
   const subDirHandle = await dirHandle.getDirectoryHandle(dirName, { create: true });
   return subDirHandle;
 };
