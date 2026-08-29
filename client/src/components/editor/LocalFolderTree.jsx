@@ -18,6 +18,7 @@ import { useToast } from '../../hooks/useToast';
 function InlineCreationInput({ type, depth, onSubmit, onCancel }) {
   const [name, setName] = useState('');
   const inputRef = useRef(null);
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     if (inputRef.current) {
@@ -25,13 +26,23 @@ function InlineCreationInput({ type, depth, onSubmit, onCancel }) {
     }
   }, []);
 
+  const handleDone = () => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    if (name.trim()) {
+      onSubmit(name.trim());
+    } else {
+      onCancel();
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (name.trim()) onSubmit(name.trim());
-      else onCancel();
+      handleDone();
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      submittedRef.current = true;
       onCancel();
     }
   };
@@ -39,7 +50,7 @@ function InlineCreationInput({ type, depth, onSubmit, onCancel }) {
   const paddingLeft = `${depth * 14 + 8}px`;
 
   return (
-    <div style={{ paddingLeft }} className="flex items-center gap-1.5 py-1 px-2 bg-surface-800 border border-brand-500/60 rounded">
+    <div style={{ paddingLeft }} className="flex items-center gap-1.5 py-1 px-2 bg-surface-800 border border-brand-500/60 rounded my-0.5">
       <span className="text-xs">{type === 'file' ? '📄' : '📁'}</span>
       <input
         ref={inputRef}
@@ -47,10 +58,7 @@ function InlineCreationInput({ type, depth, onSubmit, onCancel }) {
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={handleKeyDown}
-        onBlur={() => {
-          if (name.trim()) onSubmit(name.trim());
-          else onCancel();
-        }}
+        onBlur={handleDone}
         placeholder={type === 'file' ? 'filename.ext (e.g. main.cpp)' : 'folder_name'}
         className="bg-surface-900 text-xs font-mono text-white px-1.5 py-0.5 rounded border border-surface-600 outline-none w-full focus:border-brand-400"
       />
@@ -225,12 +233,17 @@ export function LocalFolderTree({
   };
 
   const handleSubmitCreate = async (name, parentHandle = rootHandle) => {
+    if (!name || !name.trim()) {
+      setCreationState(null);
+      return;
+    }
+    const targetType = creationState?.type || 'file';
     setCreationState(null);
-    if (!name || !name.trim()) return;
+
     const cleanName = name.trim();
 
     try {
-      if (creationState?.type === 'file') {
+      if (targetType === 'file') {
         const fileHandle = await createLocalFile(parentHandle, cleanName);
         success(`Created file: ${cleanName}`);
         await onRefresh();
