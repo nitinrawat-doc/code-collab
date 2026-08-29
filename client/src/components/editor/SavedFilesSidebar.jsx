@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { historyService, sessionService } from '../../services/sessionService';
 import { useRoom } from '../../context/RoomContext';
 import { useToast } from '../../hooks/useToast';
