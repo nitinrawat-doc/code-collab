@@ -6,16 +6,68 @@
  *  - Standard Error (stderr) & Compilation logs
  *  - Execution Time & Memory stats
  *  - Exit status & status badge
+ *  - Normalized handling for single run and test case modes
  */
 
 import { useState } from 'react';
 import { Spinner } from '../ui/Spinner';
 
-export function OutputTab({ result, loading }) {
+export const normalizeExecutionResult = (raw) => {
+  if (!raw) return null;
+
+  // Single run mode: { mode: 'run', result: { status, stdout, stderr, compileOutput, time, memory, passed } }
+  if (raw.mode === 'run' && raw.result) {
+    return {
+      stdout: raw.result.stdout || '',
+      stderr: raw.result.stderr || '',
+      compileOutput: raw.result.compileOutput || '',
+      status: raw.result.status || 'Executed',
+      time: raw.result.time || null,
+      memory: raw.result.memory || null,
+      passed: raw.result.passed || raw.result.statusId === 3,
+    };
+  }
+
+  // Test case mode: { mode: 'test', results: [...], allPassed, overallStatus }
+  if (raw.mode === 'test' && Array.isArray(raw.results)) {
+    const stdoutParts = raw.results
+      .map((r, i) => `[Test Case ${i + 1}] ${r.passed ? '✓ PASSED' : '✗ FAILED'}\nInput: ${r.input}\nExpected: ${r.expectedOutput}\nOutput: ${r.stdout || '(none)'}`)
+      .join('\n\n');
+
+    const stderrParts = raw.results.map((r) => r.stderr).filter(Boolean).join('\n');
+    const compileParts = raw.results.map((r) => r.compileOutput).filter(Boolean).join('\n');
+
+    return {
+      stdout: stdoutParts,
+      stderr: stderrParts,
+      compileOutput: compileParts,
+      status: raw.overallStatus || (raw.allPassed ? 'Accepted' : 'Wrong Answer'),
+      time: null,
+      memory: null,
+      passed: raw.allPassed,
+    };
+  }
+
+  // Direct result object
+  return {
+    stdout: raw.stdout || '',
+    stderr: raw.stderr || '',
+    compileOutput: raw.compileOutput || '',
+    status: raw.status || 'Executed',
+    time: raw.time || null,
+    memory: raw.memory || null,
+    passed: raw.passed || raw.statusId === 3,
+  };
+};
+
+export function OutputTab({ result: rawResult, loading }) {
   const [copied, setCopied] = useState(false);
 
+  const result = normalizeExecutionResult(rawResult);
+
   const handleCopy = () => {
-    const text = (result?.stdout || '') + (result?.stderr ? `\n\n[ERRORS]\n${result.stderr}` : '');
+    if (!result) return;
+    const text = (result.stdout || '') + (result.stderr ? `\n\n[ERRORS]\n${result.stderr}` : '');
     if (text) {
       navigator.clipboard.writeText(text);
       setCopied(true);
@@ -44,7 +96,7 @@ export function OutputTab({ result, loading }) {
     );
   }
 
-  const isSuccess = result.status === 'Accepted' || result.passed;
+  const isSuccess = result.passed || result.status === 'Accepted';
 
   return (
     <div className="flex flex-col h-full bg-surface-900 text-slate-200 font-mono text-xs overflow-hidden select-text">
@@ -57,7 +109,7 @@ export function OutputTab({ result, loading }) {
               ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
               : 'bg-red-500/20 text-red-400 border border-red-500/40'
           }`}>
-            {result.status || (isSuccess ? 'Success' : 'Error')}
+            {result.status}
           </span>
 
           {/* Execution Time */}

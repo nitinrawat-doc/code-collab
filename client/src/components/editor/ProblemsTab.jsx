@@ -6,6 +6,7 @@
  */
 
 import { useMemo } from 'react';
+import { normalizeExecutionResult } from './OutputTab';
 
 /**
  * Parses raw error logs for C++, Java, Python, and JavaScript
@@ -88,8 +89,9 @@ const parseErrors = (errorText, language) => {
   return problems;
 };
 
-export function ProblemsTab({ result, language, onSelectError }) {
-  const errorOutput = result?.stderr || result?.compileOutput || '';
+export function ProblemsTab({ result: rawResult, language, onSelectError }) {
+  const result = normalizeExecutionResult(rawResult);
+  const errorOutput = result ? (result.stderr || result.compileOutput || '') : '';
 
   const problems = useMemo(() => {
     return parseErrors(errorOutput, language);

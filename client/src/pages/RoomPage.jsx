@@ -4,6 +4,7 @@ import { useRoom } from '../context/RoomContext';
 import { useAuth } from '../context/AuthContext';
 import { CollaborativeEditor } from '../components/editor/CollaborativeEditor';
 import { PANEL_TABS } from '../components/editor/BottomPanel';
+import { normalizeExecutionResult } from '../components/editor/OutputTab';
 import { ProblemPanel } from '../components/problems/ProblemPanel';
 import { TestResultPanel } from '../components/problems/TestResultPanel';
 import { ChatPanel } from '../components/chat/ChatPanel';
@@ -76,7 +77,6 @@ export default function RoomPage() {
 
   const handleRunCode = async () => {
     setRunning(true);
-    setActiveTab(TABS.RESULTS);
     setBottomPanelOpen(true);
     setBottomPanelTab(PANEL_TABS.OUTPUT);
     try {
@@ -87,7 +87,9 @@ export default function RoomPage() {
         problemSlug: problem?.slug || '',
       });
       setExecutionResult(data);
-      if (data.stderr || data.compileOutput) {
+
+      const norm = normalizeExecutionResult(data);
+      if (norm && (norm.stderr || norm.compileOutput)) {
         setBottomPanelTab(PANEL_TABS.PROBLEMS);
       }
     } catch (err) {
