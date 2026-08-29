@@ -6,7 +6,6 @@ import { CollaborativeEditor } from '../components/editor/CollaborativeEditor';
 import { PANEL_TABS } from '../components/editor/BottomPanel';
 import { normalizeExecutionResult } from '../components/editor/OutputTab';
 import { ProblemPanel } from '../components/problems/ProblemPanel';
-import { TestResultPanel } from '../components/problems/TestResultPanel';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { OnlineUsers } from '../components/room/OnlineUsers';
 import { InviteModal } from '../components/room/InviteModal';
@@ -20,17 +19,21 @@ import { roomService } from '../services/roomService';
 import { getSocket } from '../socket/socketClient';
 import { EVENTS } from '../socket/socketEvents';
 
-const TABS = { PROBLEM: 'problem', CHAT: 'chat', USERS: 'users', RESULTS: 'results' };
+const DRAWER_TABS = {
+  PROBLEMS: 'problems',
+  CHAT: 'chat',
+  USERS: 'users',
+};
 
 export default function RoomPage() {
   const { roomCode } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { room, problem, setProblem, joinRoom, leaveRoom, code, setCode, language, setLanguage,
-          version, setVersion, executionResult, setExecutionResult, emitCodeChange } = useRoom();
+          version, setVersion, executionResult, setExecutionResult, emitCodeChange, onlineUsers } = useRoom();
 
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState(TABS.PROBLEM);
+  const [activeDrawer, setActiveDrawer] = useState(null); // null | 'problems' | 'chat' | 'users'
   const [showInvite, setShowInvite] = useState(false);
   const [showProblems, setShowProblems] = useState(false);
   const [problems, setProblems] = useState([]);
@@ -75,6 +78,10 @@ export default function RoomPage() {
     return () => leaveRoom(roomCode);
   }, [roomCode]);
 
+  const toggleDrawer = (tabKey) => {
+    setActiveDrawer((prev) => (prev === tabKey ? null : tabKey));
+  };
+
   const handleRunCode = async () => {
     setRunning(true);
     setBottomPanelOpen(true);
@@ -116,7 +123,7 @@ export default function RoomPage() {
       emitCodeChange(roomCode, starterCode, language, newVersion);
 
       setShowProblems(false);
-      setActiveTab(TABS.PROBLEM);
+      setActiveDrawer(DRAWER_TABS.PROBLEMS);
       success(`"${selectedProblem.title}" loaded!`);
     } catch {
       showError('Failed to select problem');
@@ -135,50 +142,88 @@ export default function RoomPage() {
 
   if (loading) return <PageLoader />;
 
-  const tabBtn = (tab, label) => (
-    <button
-      key={tab}
-      onClick={() => setActiveTab(tab)}
-      className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-        activeTab === tab
-          ? 'bg-surface-600 text-white'
-          : 'text-slate-400 hover:text-slate-200 hover:bg-surface-700'
-      }`}
-    >
-      {label}
-    </button>
-  );
-
   return (
-    <div className="flex flex-col h-screen bg-surface-900 overflow-hidden">
+    <div className="flex flex-col h-screen bg-surface-900 overflow-hidden select-none">
       <Toast toasts={toasts} removeToast={removeToast} />
 
-      {/* Top Bar */}
-      <header className="flex items-center gap-4 px-4 py-3 border-b border-surface-600 bg-surface-800 flex-shrink-0">
-        <Link to="/dashboard" className="btn-ghost p-1.5">
+      {/* Top Bar Navigation & Controls */}
+      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-surface-600 bg-surface-800 flex-shrink-0 z-10">
+        <Link to="/dashboard" className="btn-ghost p-1.5 text-slate-400 hover:text-white">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
 
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-semibold text-white truncate">{room?.name}</span>
-          <span className="text-xs font-mono text-slate-500 hidden sm:block">{roomCode}</span>
+          <span className="font-semibold text-white truncate max-w-[180px] sm:max-w-xs">{room?.name}</span>
+          <span className="text-xs font-mono text-slate-500 hidden md:inline">{roomCode}</span>
         </div>
 
         <div className="flex-1" />
 
+        {/* Action Controls Toolbar */}
         <div className="flex items-center gap-2">
-          <button onClick={loadProblems} className="btn-secondary text-sm hidden sm:flex">
-            📚 Problems
+          {/* Problems Drawer Toggle */}
+          <button
+            onClick={() => toggleDrawer(DRAWER_TABS.PROBLEMS)}
+            title="Toggle Problem Description"
+            className={`btn text-xs px-3 py-1.5 flex items-center gap-1.5 border transition-all ${
+              activeDrawer === DRAWER_TABS.PROBLEMS
+                ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                : 'btn-secondary'
+            }`}
+          >
+            <span>📚</span>
+            <span className="hidden sm:inline">Problems</span>
           </button>
-          <button onClick={() => setShowInvite(true)} className="btn-secondary text-sm hidden sm:flex">
-            🔗 Invite
+
+          {/* Chat Drawer Toggle */}
+          <button
+            onClick={() => toggleDrawer(DRAWER_TABS.CHAT)}
+            title="Toggle Live Chat"
+            className={`btn text-xs px-3 py-1.5 flex items-center gap-1.5 border transition-all ${
+              activeDrawer === DRAWER_TABS.CHAT
+                ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                : 'btn-secondary'
+            }`}
+          >
+            <span>💬</span>
+            <span className="hidden sm:inline">Chat</span>
           </button>
+
+          {/* Online Users Drawer Toggle */}
+          <button
+            onClick={() => toggleDrawer(DRAWER_TABS.USERS)}
+            title="Toggle Online Collaborators"
+            className={`btn text-xs px-3 py-1.5 flex items-center gap-1.5 border transition-all ${
+              activeDrawer === DRAWER_TABS.USERS
+                ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                : 'btn-secondary'
+            }`}
+          >
+            <span>👥</span>
+            <span className="hidden sm:inline">Online</span>
+            {onlineUsers.length > 0 && (
+              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                {onlineUsers.length}
+              </span>
+            )}
+          </button>
+
+          {/* Invite Modal Button */}
+          <button
+            onClick={() => setShowInvite(true)}
+            className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5"
+          >
+            <span>🔗</span>
+            <span className="hidden sm:inline">Invite</span>
+          </button>
+
+          {/* Run Code Button */}
           <button
             onClick={handleRunCode}
             disabled={running}
-            className="btn-primary text-sm"
+            className="btn-primary text-xs px-4 py-1.5 font-semibold flex items-center gap-1.5"
             id="run-code-btn"
           >
             {running ? <Spinner size="sm" /> : '▶ Run'}
@@ -186,9 +231,9 @@ export default function RoomPage() {
         </div>
       </header>
 
-      {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Editor (main) */}
+      {/* Main Layout Area */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Code Editor Container (Occupies 100% available horizontal space) */}
         <div className="flex-1 overflow-hidden h-full">
           <CollaborativeEditor
             roomCode={roomCode}
@@ -201,31 +246,47 @@ export default function RoomPage() {
           />
         </div>
 
-        {/* Right Panel */}
-        <div className="w-80 lg:w-96 flex flex-col border-l border-surface-600 bg-surface-800 overflow-hidden flex-shrink-0">
-          {/* Tabs */}
-          <div className="flex items-center gap-1 p-2 border-b border-surface-600 bg-surface-800">
-            {tabBtn(TABS.PROBLEM, '📋 Problem')}
-            {tabBtn(TABS.RESULTS, '⚡ Results')}
-            {tabBtn(TABS.CHAT, '💬 Chat')}
-            {tabBtn(TABS.USERS, '👥 Online')}
-          </div>
+        {/* Single Reusable Right-Side Collapsible Drawer */}
+        {activeDrawer && (
+          <div className="w-80 lg:w-96 flex flex-col border-l border-surface-600 bg-surface-800 overflow-hidden flex-shrink-0 transition-all duration-200 shadow-2xl">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600 bg-surface-800 flex-shrink-0">
+              <span className="font-semibold text-sm text-white flex items-center gap-2">
+                {activeDrawer === DRAWER_TABS.PROBLEMS && '📋 Problem Statement'}
+                {activeDrawer === DRAWER_TABS.CHAT && '💬 Live Chat'}
+                {activeDrawer === DRAWER_TABS.USERS && '👥 Online Collaborators'}
+              </span>
+              <button
+                onClick={() => setActiveDrawer(null)}
+                title="Close Drawer"
+                className="p-1 text-slate-400 hover:text-white rounded hover:bg-surface-700 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-          {/* Tab Content */}
-          <div className="flex-1 overflow-hidden">
-            {activeTab === TABS.PROBLEM && <ProblemPanel problem={problem} />}
-            {activeTab === TABS.RESULTS && <TestResultPanel result={executionResult} loading={running} />}
-            {activeTab === TABS.CHAT && <ChatPanel roomCode={roomCode} />}
-            {activeTab === TABS.USERS && (
-              <div className="p-4">
-                <OnlineUsers roomCode={roomCode} />
-              </div>
-            )}
+            {/* Drawer Body Content */}
+            <div className="flex-1 overflow-hidden">
+              {activeDrawer === DRAWER_TABS.PROBLEMS && (
+                <ProblemPanel
+                  problem={problem}
+                  onOpenProblemPicker={loadProblems}
+                />
+              )}
+              {activeDrawer === DRAWER_TABS.CHAT && <ChatPanel roomCode={roomCode} />}
+              {activeDrawer === DRAWER_TABS.USERS && (
+                <div className="p-4">
+                  <OnlineUsers roomCode={roomCode} />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Invite Modal */}
+      {/* Invite Link Modal */}
       <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} roomCode={roomCode} />
 
       {/* Problem Picker Modal */}
