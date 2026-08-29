@@ -5,12 +5,7 @@ import { useToast } from '../../hooks/useToast';
 import { Spinner } from '../ui/Spinner';
 import { LocalFolderTree } from './LocalFolderTree';
 import {
-  isFileSystemAccessSupported,
-  buildDirectoryTree,
   readLocalFile,
-  writeLocalFile,
-  createLocalFile,
-  createLocalDirectory,
 } from '../../services/fileSystem.service';
 
 const LANG_BADGES = {
@@ -41,6 +36,14 @@ export function SavedFilesSidebar({
   const [loading, setLoading] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
 
+  // Trigger state for LocalFolderTree inline creation
+  const [creationTrigger, setCreationTrigger] = useState(null); // { type: 'file' | 'folder' }
+
+  // Inline creation state for Room Files mode
+  const [creatingRoomFile, setCreatingRoomFile] = useState(false);
+  const [roomFileName, setRoomFileName] = useState('');
+  const roomInputRef = useRef(null);
+
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -70,82 +73,70 @@ export function SavedFilesSidebar({
     fetchSavedFiles();
   }, [fetchSavedFiles, refreshKey]);
 
-  // Handle New File Creation from Explorer Header
-  const handleHeaderCreateFile = async () => {
-    setShowAddMenu(false);
-    const fileName = prompt('Enter new file name (e.g. main.cpp, utils.h, app.py, index.js):');
-    if (!fileName || !fileName.trim()) return;
-    const cleanName = fileName.trim();
+  // Focus input when inline room file creation activates
+  useEffect(() => {
+    if (creatingRoomFile && roomInputRef.current) {
+      roomInputRef.current.focus();
+    }
+  }, [creatingRoomFile]);
 
+  // Handle New File Creation Trigger
+  const handleHeaderCreateFile = () => {
+    setShowAddMenu(false);
     if (explorerTab === 'local') {
       if (!rootDirectoryHandle) {
-        showError('Open a local project folder first before creating local files.');
+        showError('Open a local project folder first to create files.');
         return;
       }
-      try {
-        const fileHandle = await createLocalFile(rootDirectoryHandle, cleanName);
-        success(`Created local file: ${cleanName}`);
-        await refreshLocalTree();
-
-        // Auto-open in Monaco
-        const ext = cleanName.split('.').pop();
-        handleSelectLocalFile({
-          id: cleanName,
-          name: cleanName,
-          kind: 'file',
-          handle: fileHandle,
-          relativePath: cleanName,
-          language: ext,
-        });
-      } catch (err) {
-        showError(err.message || 'Failed to create local file');
-      }
+      setCreationTrigger({ type: 'file' });
     } else {
-      // Room Files mode
-      try {
-        const ext = cleanName.split('.').pop()?.toLowerCase();
-        const lang = ext === 'cpp' || ext === 'h' ? 'cpp' : ext === 'py' ? 'python' : ext === 'java' ? 'java' : 'javascript';
-        await historyService.save(roomCode, {
-          code: '// New file created in room\n',
-          language: lang,
-          label: cleanName,
-        });
-
-        const newVer = version + 1;
-        setCode('// New file created in room\n');
-        setLanguage(lang);
-        setVersion(newVer);
-        emitCodeChange(roomCode, '// New file created in room\n', lang, newVer);
-
-        await fetchSavedFiles();
-        success(`Created room file: ${cleanName}`);
-      } catch (err) {
-        showError('Failed to create file in room');
-      }
+      setCreatingRoomFile(true);
     }
   };
 
-  // Handle New Directory Creation from Explorer Header
-  const handleHeaderCreateDirectory = async () => {
+  // Handle New Directory Creation Trigger
+  const handleHeaderCreateDirectory = () => {
     setShowAddMenu(false);
-    const dirName = prompt('Enter new folder name:');
-    if (!dirName || !dirName.trim()) return;
-    const cleanName = dirName.trim();
-
     if (explorerTab === 'local') {
       if (!rootDirectoryHandle) {
-        showError('Open a local project folder first before creating local folders.');
+        showError('Open a local project folder first to create folders.');
         return;
       }
-      try {
-        await createLocalDirectory(rootDirectoryHandle, cleanName);
-        success(`Created local folder: ${cleanName}`);
-        await refreshLocalTree();
-      } catch (err) {
-        showError(err.message || 'Failed to create folder');
-      }
+      setCreationTrigger({ type: 'folder' });
     } else {
       showError('Folder hierarchies in Room mode are managed through local project import.');
+    }
+  };
+
+  // Submit new Room file
+  const handleSubmitRoomFile = async () => {
+    if (!roomFileName.trim()) {
+      setCreatingRoomFile(false);
+      return;
+    }
+    const cleanName = roomFileName.trim();
+    setCreatingRoomFile(false);
+    setRoomFileName('');
+
+    try {
+      const ext = cleanName.split('.').pop()?.toLowerCase();
+      const lang = ext === 'cpp' || ext === 'h' ? 'cpp' : ext === 'py' ? 'python' : ext === 'java' ? 'java' : 'javascript';
+      await historyService.save(roomCode, {
+        code: '// New file created in room\n',
+        language: lang,
+        label: cleanName,
+      });
+
+      const newVer = version + 1;
+      setCode('// New file created in room\n');
+      setLanguage(lang);
+      setVersion(newVer);
+      emitCodeChange(roomCode, '// New file created in room\n', lang, newVer);
+
+      await fetchSavedFiles();
+      success(`Created room file: ${cleanName}`);
+    } catch (err) {
+      showError('Failed to create file in room');
     }
   };
 
@@ -325,6 +316,8 @@ export function SavedFilesSidebar({
               onSelectFile={handleSelectLocalFile}
               onRefresh={refreshLocalTree}
               onImportToRoom={handleImportToRoom}
+              creationTrigger={creationTrigger}
+              onClearCreationTrigger={() => setCreationTrigger(null)}
             />
           ) : (
             <div className="text-center py-10 px-4 space-y-3">
@@ -348,11 +341,31 @@ export function SavedFilesSidebar({
         ) : (
           /* Room Saved Files List */
           <div className="p-2 space-y-1">
+            {/* Inline Creation Input for Room Files Mode */}
+            {creatingRoomFile && (
+              <div className="flex items-center gap-1.5 py-1 px-2 bg-surface-800 border border-brand-500/60 rounded mb-2">
+                <span className="text-xs">📄</span>
+                <input
+                  ref={roomInputRef}
+                  type="text"
+                  value={roomFileName}
+                  onChange={(e) => setRoomFileName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSubmitRoomFile();
+                    if (e.key === 'Escape') setCreatingRoomFile(false);
+                  }}
+                  onBlur={handleSubmitRoomFile}
+                  placeholder="filename.cpp"
+                  className="bg-surface-900 text-xs font-mono text-white px-1.5 py-0.5 rounded border border-surface-600 outline-none w-full focus:border-brand-400"
+                />
+              </div>
+            )}
+
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Spinner size="sm" />
               </div>
-            ) : files.length === 0 ? (
+            ) : files.length === 0 && !creatingRoomFile ? (
               <div className="text-center py-8 px-3">
                 <div className="w-10 h-10 rounded-xl bg-surface-700/50 flex items-center justify-center mx-auto mb-2 text-slate-500">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -360,7 +373,7 @@ export function SavedFilesSidebar({
                   </svg>
                 </div>
                 <p className="text-xs text-slate-400 font-medium">No room files saved yet</p>
-                <p className="text-[11px] text-slate-500 mt-1">Press Ctrl+S or click Save As... to save to room</p>
+                <p className="text-[11px] text-slate-500 mt-1">Click ➕ to create a file or press Ctrl+S</p>
               </div>
             ) : (
               files.map((file) => {

@@ -1,7 +1,8 @@
 /**
  * components/editor/LocalFolderTree.jsx
  *
- * Tree explorer for locally opened projects with right-click context menus.
+ * Tree explorer for locally opened projects with VS Code-style inline file/folder creation
+ * and right-click context menus.
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -9,22 +10,70 @@ import {
   createLocalFile,
   createLocalDirectory,
   removeLocalEntry,
-  buildDirectoryTree,
+  readLocalFile,
+  checkEntryExists,
 } from '../../services/fileSystem.service';
 import { useToast } from '../../hooks/useToast';
+
+function InlineCreationInput({ type, depth, onSubmit, onCancel }) {
+  const [name, setName] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (name.trim()) onSubmit(name.trim());
+      else onCancel();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onCancel();
+    }
+  };
+
+  const paddingLeft = `${depth * 14 + 8}px`;
+
+  return (
+    <div style={{ paddingLeft }} className="flex items-center gap-1.5 py-1 px-2 bg-surface-800 border border-brand-500/60 rounded">
+      <span className="text-xs">{type === 'file' ? '📄' : '📁'}</span>
+      <input
+        ref={inputRef}
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={() => {
+          if (name.trim()) onSubmit(name.trim());
+          else onCancel();
+        }}
+        placeholder={type === 'file' ? 'filename.ext (e.g. main.cpp)' : 'folder_name'}
+        className="bg-surface-900 text-xs font-mono text-white px-1.5 py-0.5 rounded border border-surface-600 outline-none w-full focus:border-brand-400"
+      />
+    </div>
+  );
+}
 
 function TreeNode({
   node,
   depth = 0,
   activeFileId,
   onSelectFile,
-  onNewFile,
-  onNewFolder,
+  onStartCreate,
   onDelete,
   onContextMenu,
+  creationState,
+  onSubmitCreate,
+  onCancelCreate,
 }) {
   const [isExpanded, setIsExpanded] = useState(depth === 0);
   const paddingLeft = `${depth * 14 + 8}px`;
+
+  const isCreatingHere = creationState && creationState.parentHandle === node.handle;
 
   if (node.kind === 'directory') {
     return (
@@ -43,14 +92,22 @@ function TreeNode({
 
           <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
             <button
-              onClick={(e) => { e.stopPropagation(); onNewFile(node.handle); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(true);
+                onStartCreate('file', node.handle);
+              }}
               title="New File inside directory"
               className="p-0.5 rounded hover:bg-surface-600 text-slate-400 hover:text-white text-[10px]"
             >
               +📄
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onNewFolder(node.handle); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(true);
+                onStartCreate('folder', node.handle);
+              }}
               title="New Folder inside directory"
               className="p-0.5 rounded hover:bg-surface-600 text-slate-400 hover:text-white text-[10px]"
             >
@@ -58,6 +115,16 @@ function TreeNode({
             </button>
           </div>
         </div>
+
+        {/* Render Inline Creation Input inside folder if active */}
+        {isExpanded && isCreatingHere && (
+          <InlineCreationInput
+            type={creationState.type}
+            depth={depth + 1}
+            onSubmit={(name) => onSubmitCreate(name, node.handle)}
+            onCancel={onCancelCreate}
+          />
+        )}
 
         {isExpanded && node.children && (
           <div className="space-y-0.5">
@@ -68,10 +135,12 @@ function TreeNode({
                 depth={depth + 1}
                 activeFileId={activeFileId}
                 onSelectFile={onSelectFile}
-                onNewFile={onNewFile}
-                onNewFolder={onNewFolder}
+                onStartCreate={onStartCreate}
                 onDelete={onDelete}
                 onContextMenu={onContextMenu}
+                creationState={creationState}
+                onSubmitCreate={onSubmitCreate}
+                onCancelCreate={onCancelCreate}
               />
             ))}
           </div>
@@ -116,9 +185,22 @@ export function LocalFolderTree({
   onSelectFile,
   onRefresh,
   onImportToRoom,
+  creationTrigger,
+  onClearCreationTrigger,
 }) {
   const { success, error: showError } = useToast();
   const [contextMenu, setContextMenu] = useState(null);
+
+  // VS Code-style inline creation state: { type: 'file' | 'folder', parentHandle: FileSystemDirectoryHandle }
+  const [creationState, setCreationState] = useState(null);
+
+  // Respond to header creation triggers
+  useEffect(() => {
+    if (creationTrigger) {
+      setCreationState({ type: creationTrigger.type, parentHandle: rootHandle });
+      if (onClearCreationTrigger) onClearCreationTrigger();
+    }
+  }, [creationTrigger, rootHandle, onClearCreationTrigger]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -137,42 +219,40 @@ export function LocalFolderTree({
     });
   };
 
-  const handleNewFile = async (targetDirHandle = rootHandle) => {
+  const handleStartCreate = (type, parentHandle = rootHandle) => {
     setContextMenu(null);
-    const fileName = prompt('Enter new file name (e.g. main.cpp, script.js):');
-    if (!fileName || !fileName.trim()) return;
-
-    try {
-      const createdFileHandle = await createLocalFile(targetDirHandle, fileName.trim());
-      success(`Created file: ${fileName}`);
-      await onRefresh();
-
-      // Automatically select & open the new file in Monaco Editor
-      const newPath = `${targetDirHandle.name === rootHandle.name ? '' : targetDirHandle.name + '/'}${fileName.trim()}`;
-      onSelectFile({
-        id: newPath,
-        name: fileName.trim(),
-        kind: 'file',
-        handle: createdFileHandle,
-        relativePath: newPath,
-        language: fileName.split('.').pop(),
-      });
-    } catch (err) {
-      showError(err.message || 'Failed to create file');
-    }
+    setCreationState({ type, parentHandle });
   };
 
-  const handleNewFolder = async (targetDirHandle = rootHandle) => {
-    setContextMenu(null);
-    const folderName = prompt('Enter new folder name:');
-    if (!folderName || !folderName.trim()) return;
+  const handleSubmitCreate = async (name, parentHandle = rootHandle) => {
+    setCreationState(null);
+    if (!name || !name.trim()) return;
+    const cleanName = name.trim();
 
     try {
-      await createLocalDirectory(targetDirHandle, folderName.trim());
-      success(`Created directory: ${folderName}`);
-      await onRefresh();
+      if (creationState?.type === 'file') {
+        const fileHandle = await createLocalFile(parentHandle, cleanName);
+        success(`Created file: ${cleanName}`);
+        await onRefresh();
+
+        // Auto-select and open the newly created file in Monaco Editor
+        const ext = cleanName.split('.').pop();
+        const relPath = `${parentHandle.name === rootHandle.name ? '' : parentHandle.name + '/'}${cleanName}`;
+        onSelectFile({
+          id: relPath,
+          name: cleanName,
+          kind: 'file',
+          handle: fileHandle,
+          relativePath: relPath,
+          language: ext,
+        });
+      } else {
+        await createLocalDirectory(parentHandle, cleanName);
+        success(`Created folder: ${cleanName}`);
+        await onRefresh();
+      }
     } catch (err) {
-      showError(err.message || 'Failed to create directory');
+      showError(err.message || 'Failed to create item');
     }
   };
 
@@ -188,6 +268,8 @@ export function LocalFolderTree({
     }
   };
 
+  const isCreatingAtRoot = creationState && creationState.parentHandle === rootHandle;
+
   return (
     <div className="flex flex-col h-full bg-surface-850 select-none text-xs relative">
       {/* Explorer Tree Toolbar */}
@@ -198,14 +280,14 @@ export function LocalFolderTree({
 
         <div className="flex items-center gap-1">
           <button
-            onClick={() => handleNewFile(rootHandle)}
+            onClick={() => handleStartCreate('file', rootHandle)}
             title="New File (+📄)"
             className="p-1 rounded hover:bg-surface-700 text-slate-300 hover:text-white"
           >
             +📄
           </button>
           <button
-            onClick={() => handleNewFolder(rootHandle)}
+            onClick={() => handleStartCreate('folder', rootHandle)}
             title="New Directory (+📁)"
             className="p-1 rounded hover:bg-surface-700 text-slate-300 hover:text-white"
           >
@@ -239,7 +321,17 @@ export function LocalFolderTree({
         onContextMenu={(e) => handleContextMenu(e, { kind: 'directory', handle: rootHandle, name: rootHandle?.name })}
         className="flex-1 overflow-y-auto p-2 space-y-1"
       >
-        {treeNodes.length === 0 ? (
+        {/* Inline Creation Input at Root */}
+        {isCreatingAtRoot && (
+          <InlineCreationInput
+            type={creationState.type}
+            depth={0}
+            onSubmit={(name) => handleSubmitCreate(name, rootHandle)}
+            onCancel={() => setCreationState(null)}
+          />
+        )}
+
+        {treeNodes.length === 0 && !isCreatingAtRoot ? (
           <div className="text-center py-6 text-slate-500 italic text-[11px]">
             Folder is empty. Click +📄 to create a file.
           </div>
@@ -250,10 +342,12 @@ export function LocalFolderTree({
               node={node}
               activeFileId={activeFile?.id}
               onSelectFile={onSelectFile}
-              onNewFile={handleNewFile}
-              onNewFolder={handleNewFolder}
+              onStartCreate={handleStartCreate}
               onDelete={handleDelete}
               onContextMenu={handleContextMenu}
+              creationState={creationState}
+              onSubmitCreate={handleSubmitCreate}
+              onCancelCreate={() => setCreationState(null)}
             />
           ))
         )}
@@ -268,13 +362,13 @@ export function LocalFolderTree({
           {contextMenu.node.kind === 'directory' ? (
             <>
               <button
-                onClick={() => handleNewFile(contextMenu.node.handle)}
+                onClick={() => handleStartCreate('file', contextMenu.node.handle)}
                 className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
               >
                 <span>+📄</span> New File
               </button>
               <button
-                onClick={() => handleNewFolder(contextMenu.node.handle)}
+                onClick={() => handleStartCreate('folder', contextMenu.node.handle)}
                 className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
               >
                 <span>+📁</span> New Folder
