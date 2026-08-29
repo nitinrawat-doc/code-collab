@@ -23,6 +23,7 @@ export function CreateItemModal({
   onClose,
   type = 'file', // 'file' | 'folder'
   mode = 'local', // 'local' | 'room'
+  roomCode: roomCodeProp = '',
   targetDirHandle = null,
   rootHandle = null,
   existingRoomFiles = [],
@@ -30,13 +31,16 @@ export function CreateItemModal({
   onRefreshRoomFiles,
   onSelectLocalFile,
 }) {
-  const { roomCode, setCode, setLanguage, setVersion, emitCodeChange, version } = useRoom();
+  const { room, setCode, setLanguage, setVersion, emitCodeChange, version } = useRoom();
   const { success, error: showError } = useToast();
 
   const [name, setName] = useState('');
   const [validationError, setValidationError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef(null);
+
+  // Active room code resolution (from props or room context object)
+  const activeRoomCode = roomCodeProp || room?.roomCode || '';
 
   // Reset state when modal opens
   useEffect(() => {
@@ -108,6 +112,12 @@ export function CreateItemModal({
         }
       } else {
         // Room Files Mode (or fallback when no local folder open)
+        if (!activeRoomCode) {
+          setValidationError('Invalid room session. Please rejoin the room.');
+          setSubmitting(false);
+          return;
+        }
+
         const isDuplicate = existingRoomFiles.some(
           (f) => (f.label || '').toLowerCase() === cleanName.toLowerCase()
         );
@@ -120,14 +130,14 @@ export function CreateItemModal({
         const lang = getLanguageFromFileName(cleanName);
         const initialCode = type === 'file' ? `// ${cleanName}\n` : '';
 
-        // Correct API call: sessionService.save(roomCode, label)
-        await sessionService.save(roomCode, cleanName);
+        // Save version to active room code
+        await sessionService.save(activeRoomCode, cleanName);
 
         const newVer = version + 1;
         setCode(initialCode);
         setLanguage(lang);
         setVersion(newVer);
-        emitCodeChange(roomCode, initialCode, lang, newVer);
+        emitCodeChange(activeRoomCode, initialCode, lang, newVer);
 
         if (onRefreshRoomFiles) await onRefreshRoomFiles();
         success(`Created room file: ${cleanName}`);

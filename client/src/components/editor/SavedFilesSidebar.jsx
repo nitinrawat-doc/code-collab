@@ -352,6 +352,7 @@ export function SavedFilesSidebar({
         onClose={() => setHeaderModalState({ ...headerModalState, isOpen: false })}
         type={headerModalState.type}
         mode={explorerTab}
+        roomCode={roomCode}
         targetDirHandle={rootDirectoryHandle}
         rootHandle={rootDirectoryHandle}
         existingRoomFiles={files}

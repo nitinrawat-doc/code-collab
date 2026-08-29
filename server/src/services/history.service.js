@@ -13,7 +13,9 @@ const MAX_VERSIONS_PER_SESSION = 50;
  * Saves a new code version snapshot.
  */
 const saveVersion = async (roomCode, userId, label = null) => {
-  const room = await Room.findOne({ roomCode });
+  if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const room = await Room.findOne({ roomCode: normalizedCode });
   if (!room) throw ApiError.notFound('Room not found');
   if (!room.isMember(userId)) throw ApiError.forbidden('Not a member');
 
