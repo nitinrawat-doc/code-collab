@@ -21,5 +21,11 @@ export const EVENTS = {
   EXECUTION_START: 'execution:start',
   EXECUTION_RESULT: 'execution:result',
   MEMBER_REMOVED: 'member:removed',
+  TERMINAL_INPUT: 'terminal:input',
+  TERMINAL_OUTPUT: 'terminal:output',
+  TERMINAL_CLEAR: 'terminal:clear',
+  TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_INIT: 'terminal:init',
+  TERMINAL_EXIT: 'terminal:exit',
   ERROR: 'error',
 };

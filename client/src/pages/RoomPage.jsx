@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useRoom } from '../context/RoomContext';
 import { useAuth } from '../context/AuthContext';
 import { CollaborativeEditor } from '../components/editor/CollaborativeEditor';
+import { PANEL_TABS } from '../components/editor/BottomPanel';
 import { ProblemPanel } from '../components/problems/ProblemPanel';
 import { TestResultPanel } from '../components/problems/TestResultPanel';
 import { ChatPanel } from '../components/chat/ChatPanel';
@@ -33,6 +34,11 @@ export default function RoomPage() {
   const [showProblems, setShowProblems] = useState(false);
   const [problems, setProblems] = useState([]);
   const [running, setRunning] = useState(false);
+
+  // Bottom Panel state
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+  const [bottomPanelTab, setBottomPanelTab] = useState(PANEL_TABS.TERMINAL);
+
   const { toasts, removeToast, success, error: showError } = useToast();
 
   useEffect(() => {
@@ -71,6 +77,8 @@ export default function RoomPage() {
   const handleRunCode = async () => {
     setRunning(true);
     setActiveTab(TABS.RESULTS);
+    setBottomPanelOpen(true);
+    setBottomPanelTab(PANEL_TABS.OUTPUT);
     try {
       const { data } = await executeService.run({
         roomCode,
@@ -79,6 +87,9 @@ export default function RoomPage() {
         problemSlug: problem?.slug || '',
       });
       setExecutionResult(data);
+      if (data.stderr || data.compileOutput) {
+        setBottomPanelTab(PANEL_TABS.PROBLEMS);
+      }
     } catch (err) {
       showError(err.response?.data?.message || 'Execution failed');
     } finally {
@@ -176,8 +187,16 @@ export default function RoomPage() {
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Editor (main) */}
-        <div className="flex-1 overflow-hidden">
-          <CollaborativeEditor roomCode={roomCode} />
+        <div className="flex-1 overflow-hidden h-full">
+          <CollaborativeEditor
+            roomCode={roomCode}
+            bottomPanelOpen={bottomPanelOpen}
+            setBottomPanelOpen={setBottomPanelOpen}
+            bottomPanelTab={bottomPanelTab}
+            setBottomPanelTab={setBottomPanelTab}
+            executionResult={executionResult}
+            executionLoading={running}
+          />
         </div>
 
         {/* Right Panel */}

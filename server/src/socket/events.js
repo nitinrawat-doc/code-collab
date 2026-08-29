@@ -41,6 +41,14 @@ const EVENTS = {
   // Member management
   MEMBER_REMOVED: 'member:removed',
 
+  // Terminal events
+  TERMINAL_INPUT: 'terminal:input',
+  TERMINAL_OUTPUT: 'terminal:output',
+  TERMINAL_CLEAR: 'terminal:clear',
+  TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_INIT: 'terminal:init',
+  TERMINAL_EXIT: 'terminal:exit',
+
   // Generic
   ERROR: 'error',
 };

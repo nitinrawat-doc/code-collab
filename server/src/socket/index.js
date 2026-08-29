@@ -9,6 +9,7 @@ const { JWT_SECRET } = require('../config/env');
 const { registerRoomHandlers } = require('./handlers/room.handler');
 const { registerEditorHandlers } = require('./handlers/editor.handler');
 const { registerChatHandlers } = require('./handlers/chat.handler');
+const { registerTerminalHandlers } = require('./handlers/terminal.handler');
 
 const initSocket = (io) => {
   /**
@@ -44,6 +45,7 @@ const initSocket = (io) => {
     registerRoomHandlers(io, socket);
     registerEditorHandlers(io, socket);
     registerChatHandlers(io, socket);
+    registerTerminalHandlers(io, socket);
 
     socket.on('disconnect', (reason) => {
       console.log(`[socket] Disconnected: ${socket.user?.name} — ${reason}`);

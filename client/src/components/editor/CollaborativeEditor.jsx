@@ -6,6 +6,7 @@ import { getSocket } from '../../socket/socketClient';
 import { useToast } from '../../hooks/useToast';
 import { SavedFilesSidebar } from './SavedFilesSidebar';
 import { SaveFileModal } from './SaveFileModal';
+import { BottomPanel, PANEL_TABS } from './BottomPanel';
 
 const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript', ext: 'js' },
@@ -21,7 +22,15 @@ const MONACO_LANG = {
   java: 'java',
 };
 
-export function CollaborativeEditor({ roomCode }) {
+export function CollaborativeEditor({
+  roomCode,
+  bottomPanelOpen = false,
+  setBottomPanelOpen,
+  bottomPanelTab = PANEL_TABS.TERMINAL,
+  setBottomPanelTab,
+  executionResult = null,
+  executionLoading = false,
+}) {
   const { code, setCode, language, setLanguage, version, setVersion, emitCodeChange, problem } = useRoom();
   const { success } = useToast();
 
@@ -56,7 +65,16 @@ export function CollaborativeEditor({ roomCode }) {
     success(`Exported ${fileName}`);
   }, [code, language, success]);
 
-  // Global Keyboard Shortcuts (Ctrl+S for Save Modal, Ctrl+B for Sidebar Toggle)
+  // Jump to specific line and column in Monaco Editor
+  const handleJumpToLine = useCallback(({ line, column }) => {
+    if (editorRef.current) {
+      editorRef.current.revealLineInCenter(line);
+      editorRef.current.setPosition({ lineNumber: line, column: column || 1 });
+      editorRef.current.focus();
+    }
+  }, []);
+
+  // Global Keyboard Shortcuts (Ctrl+S for Save, Ctrl+B for Sidebar, Ctrl+` for Terminal)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -65,11 +83,14 @@ export function CollaborativeEditor({ roomCode }) {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setShowSidebar((prev) => !prev);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault();
+        if (setBottomPanelOpen) setBottomPanelOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleOpenSaveModal]);
+  }, [handleOpenSaveModal, setBottomPanelOpen]);
 
   const handleEditorChange = useCallback(
     (value) => {
@@ -120,6 +141,11 @@ export function CollaborativeEditor({ roomCode }) {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
       setShowSidebar((prev) => !prev);
     });
+
+    // Bind Ctrl+` inside Monaco (Toggle Terminal)
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.US_BACKTICK, () => {
+      if (setBottomPanelOpen) setBottomPanelOpen((prev) => !prev);
+    });
   };
 
   const prevCodeRef = useRef(code);
@@ -151,6 +177,22 @@ export function CollaborativeEditor({ roomCode }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
           <span className="hidden sm:inline">Files</span>
+        </button>
+
+        {/* Toggle Terminal Panel Button */}
+        <button
+          onClick={() => setBottomPanelOpen && setBottomPanelOpen((prev) => !prev)}
+          title="Toggle Bottom Terminal Panel (Ctrl+`)"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+            bottomPanelOpen
+              ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+              : 'bg-surface-700 hover:bg-surface-600 text-slate-300 border-surface-600'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="hidden sm:inline">Terminal</span>
         </button>
 
         {/* Language Selector */}
@@ -204,7 +246,7 @@ export function CollaborativeEditor({ roomCode }) {
       </div>
 
       {/* Editor & Explorer Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden min-h-0">
         {/* VS Code Style Saved Files Sidebar */}
         <SavedFilesSidebar
           roomCode={roomCode}
@@ -215,7 +257,7 @@ export function CollaborativeEditor({ roomCode }) {
         />
 
         {/* Monaco Editor Component */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden h-full">
           <Editor
             height="100%"
             language={MONACO_LANG[language]}
@@ -241,6 +283,19 @@ export function CollaborativeEditor({ roomCode }) {
           />
         </div>
       </div>
+
+      {/* Bottom Panel Component */}
+      <BottomPanel
+        roomCode={roomCode}
+        executionResult={executionResult}
+        executionLoading={executionLoading}
+        language={language}
+        onSelectError={handleJumpToLine}
+        isOpen={bottomPanelOpen}
+        onClose={() => setBottomPanelOpen && setBottomPanelOpen(false)}
+        activeTab={bottomPanelTab}
+        onTabChange={(tab) => setBottomPanelTab && setBottomPanelTab(tab)}
+      />
 
       {/* Custom File Name Save Modal */}
       <SaveFileModal
