@@ -1,70 +1,14 @@
 /**
  * components/editor/LocalFolderTree.jsx
  *
- * Tree explorer for locally opened projects with VS Code-style inline file/folder creation
- * and right-click context menus.
+ * Tree explorer for locally opened projects with right-click context menus
+ * and modal file/folder creation.
  */
 
-import { useState, useEffect, useRef } from 'react';
-import {
-  createLocalFile,
-  createLocalDirectory,
-  removeLocalEntry,
-  readLocalFile,
-  checkEntryExists,
-} from '../../services/fileSystem.service';
+import { useState, useEffect } from 'react';
+import { removeLocalEntry } from '../../services/fileSystem.service';
 import { useToast } from '../../hooks/useToast';
-
-function InlineCreationInput({ type, depth, onSubmit, onCancel }) {
-  const [name, setName] = useState('');
-  const inputRef = useRef(null);
-  const submittedRef = useRef(false);
-
-  useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, []);
-
-  const handleDone = () => {
-    if (submittedRef.current) return;
-    submittedRef.current = true;
-    if (name.trim()) {
-      onSubmit(name.trim());
-    } else {
-      onCancel();
-    }
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleDone();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      submittedRef.current = true;
-      onCancel();
-    }
-  };
-
-  const paddingLeft = `${depth * 14 + 8}px`;
-
-  return (
-    <div style={{ paddingLeft }} className="flex items-center gap-1.5 py-1 px-2 bg-surface-800 border border-brand-500/60 rounded my-0.5">
-      <span className="text-xs">{type === 'file' ? '📄' : '📁'}</span>
-      <input
-        ref={inputRef}
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={handleDone}
-        placeholder={type === 'file' ? 'filename.ext (e.g. main.cpp)' : 'folder_name'}
-        className="bg-surface-900 text-xs font-mono text-white px-1.5 py-0.5 rounded border border-surface-600 outline-none w-full focus:border-brand-400"
-      />
-    </div>
-  );
-}
+import { CreateItemModal } from './CreateItemModal';
 
 function TreeNode({
   node,
@@ -74,14 +18,9 @@ function TreeNode({
   onStartCreate,
   onDelete,
   onContextMenu,
-  creationState,
-  onSubmitCreate,
-  onCancelCreate,
 }) {
   const [isExpanded, setIsExpanded] = useState(depth === 0);
   const paddingLeft = `${depth * 14 + 8}px`;
-
-  const isCreatingHere = creationState && creationState.parentHandle === node.handle;
 
   if (node.kind === 'directory') {
     return (
@@ -124,16 +63,6 @@ function TreeNode({
           </div>
         </div>
 
-        {/* Render Inline Creation Input inside folder if active */}
-        {isExpanded && isCreatingHere && (
-          <InlineCreationInput
-            type={creationState.type}
-            depth={depth + 1}
-            onSubmit={(name) => onSubmitCreate(name, node.handle)}
-            onCancel={onCancelCreate}
-          />
-        )}
-
         {isExpanded && node.children && (
           <div className="space-y-0.5">
             {node.children.map((child) => (
@@ -146,9 +75,6 @@ function TreeNode({
                 onStartCreate={onStartCreate}
                 onDelete={onDelete}
                 onContextMenu={onContextMenu}
-                creationState={creationState}
-                onSubmitCreate={onSubmitCreate}
-                onCancelCreate={onCancelCreate}
               />
             ))}
           </div>
@@ -193,22 +119,16 @@ export function LocalFolderTree({
   onSelectFile,
   onRefresh,
   onImportToRoom,
-  creationTrigger,
-  onClearCreationTrigger,
 }) {
   const { success, error: showError } = useToast();
   const [contextMenu, setContextMenu] = useState(null);
 
-  // VS Code-style inline creation state: { type: 'file' | 'folder', parentHandle: FileSystemDirectoryHandle }
-  const [creationState, setCreationState] = useState(null);
-
-  // Respond to header creation triggers
-  useEffect(() => {
-    if (creationTrigger) {
-      setCreationState({ type: creationTrigger.type, parentHandle: rootHandle });
-      if (onClearCreationTrigger) onClearCreationTrigger();
-    }
-  }, [creationTrigger, rootHandle, onClearCreationTrigger]);
+  // Modal creation state
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    type: 'file',
+    targetDirHandle: rootHandle,
+  });
 
   // Close context menu on outside click
   useEffect(() => {
@@ -229,44 +149,11 @@ export function LocalFolderTree({
 
   const handleStartCreate = (type, parentHandle = rootHandle) => {
     setContextMenu(null);
-    setCreationState({ type, parentHandle });
-  };
-
-  const handleSubmitCreate = async (name, parentHandle = rootHandle) => {
-    if (!name || !name.trim()) {
-      setCreationState(null);
-      return;
-    }
-    const targetType = creationState?.type || 'file';
-    setCreationState(null);
-
-    const cleanName = name.trim();
-
-    try {
-      if (targetType === 'file') {
-        const fileHandle = await createLocalFile(parentHandle, cleanName);
-        success(`Created file: ${cleanName}`);
-        await onRefresh();
-
-        // Auto-select and open the newly created file in Monaco Editor
-        const ext = cleanName.split('.').pop();
-        const relPath = `${parentHandle.name === rootHandle.name ? '' : parentHandle.name + '/'}${cleanName}`;
-        onSelectFile({
-          id: relPath,
-          name: cleanName,
-          kind: 'file',
-          handle: fileHandle,
-          relativePath: relPath,
-          language: ext,
-        });
-      } else {
-        await createLocalDirectory(parentHandle, cleanName);
-        success(`Created folder: ${cleanName}`);
-        await onRefresh();
-      }
-    } catch (err) {
-      showError(err.message || 'Failed to create item');
-    }
+    setModalState({
+      isOpen: true,
+      type,
+      targetDirHandle: parentHandle || rootHandle,
+    });
   };
 
   const handleDelete = async (node) => {
@@ -280,8 +167,6 @@ export function LocalFolderTree({
       showError(`Failed to delete: ${err.message}`);
     }
   };
-
-  const isCreatingAtRoot = creationState && creationState.parentHandle === rootHandle;
 
   return (
     <div className="flex flex-col h-full bg-surface-850 select-none text-xs relative">
@@ -334,17 +219,7 @@ export function LocalFolderTree({
         onContextMenu={(e) => handleContextMenu(e, { kind: 'directory', handle: rootHandle, name: rootHandle?.name })}
         className="flex-1 overflow-y-auto p-2 space-y-1"
       >
-        {/* Inline Creation Input at Root */}
-        {isCreatingAtRoot && (
-          <InlineCreationInput
-            type={creationState.type}
-            depth={0}
-            onSubmit={(name) => handleSubmitCreate(name, rootHandle)}
-            onCancel={() => setCreationState(null)}
-          />
-        )}
-
-        {treeNodes.length === 0 && !isCreatingAtRoot ? (
+        {treeNodes.length === 0 ? (
           <div className="text-center py-6 text-slate-500 italic text-[11px]">
             Folder is empty. Click +📄 to create a file.
           </div>
@@ -358,9 +233,6 @@ export function LocalFolderTree({
               onStartCreate={handleStartCreate}
               onDelete={handleDelete}
               onContextMenu={handleContextMenu}
-              creationState={creationState}
-              onSubmitCreate={handleSubmitCreate}
-              onCancelCreate={() => setCreationState(null)}
             />
           ))
         )}
@@ -413,6 +285,18 @@ export function LocalFolderTree({
           )}
         </div>
       )}
+
+      {/* Create Item Modal */}
+      <CreateItemModal
+        isOpen={modalState.isOpen}
+        onClose={() => setModalState({ ...modalState, isOpen: false })}
+        type={modalState.type}
+        mode="local"
+        targetDirHandle={modalState.targetDirHandle}
+        rootHandle={rootHandle}
+        onRefreshLocal={onRefresh}
+        onSelectLocalFile={onSelectFile}
+      />
     </div>
   );
 }

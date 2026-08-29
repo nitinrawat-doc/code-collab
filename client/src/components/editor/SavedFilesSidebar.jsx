@@ -4,6 +4,7 @@ import { useRoom } from '../../context/RoomContext';
 import { useToast } from '../../hooks/useToast';
 import { Spinner } from '../ui/Spinner';
 import { LocalFolderTree } from './LocalFolderTree';
+import { CreateItemModal } from './CreateItemModal';
 import {
   readLocalFile,
 } from '../../services/fileSystem.service';
@@ -36,13 +37,11 @@ export function SavedFilesSidebar({
   const [loading, setLoading] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
 
-  // Trigger state for LocalFolderTree inline creation
-  const [creationTrigger, setCreationTrigger] = useState(null); // { type: 'file' | 'folder' }
-
-  // Inline creation state for Room Files mode
-  const [creatingRoomFile, setCreatingRoomFile] = useState(false);
-  const [roomFileName, setRoomFileName] = useState('');
-  const roomInputRef = useRef(null);
+  // Modal creation state for Explorer Header + button
+  const [headerModalState, setHeaderModalState] = useState({
+    isOpen: false,
+    type: 'file',
+  });
 
   const menuRef = useRef(null);
 
@@ -73,71 +72,16 @@ export function SavedFilesSidebar({
     fetchSavedFiles();
   }, [fetchSavedFiles, refreshKey]);
 
-  // Focus input when inline room file creation activates
-  useEffect(() => {
-    if (creatingRoomFile && roomInputRef.current) {
-      roomInputRef.current.focus();
-    }
-  }, [creatingRoomFile]);
-
-  // Handle New File Creation Trigger
+  // Handle New File Trigger from Explorer Header
   const handleHeaderCreateFile = () => {
     setShowAddMenu(false);
-    if (explorerTab === 'local') {
-      if (!rootDirectoryHandle) {
-        showError('Open a local project folder first to create files.');
-        return;
-      }
-      setCreationTrigger({ type: 'file' });
-    } else {
-      setCreatingRoomFile(true);
-    }
+    setHeaderModalState({ isOpen: true, type: 'file' });
   };
 
-  // Handle New Directory Creation Trigger
+  // Handle New Directory Trigger from Explorer Header
   const handleHeaderCreateDirectory = () => {
     setShowAddMenu(false);
-    if (explorerTab === 'local') {
-      if (!rootDirectoryHandle) {
-        showError('Open a local project folder first to create folders.');
-        return;
-      }
-      setCreationTrigger({ type: 'folder' });
-    } else {
-      showError('Folder hierarchies in Room mode are managed through local project import.');
-    }
-  };
-
-  // Submit new Room file
-  const handleSubmitRoomFile = async () => {
-    if (!roomFileName.trim()) {
-      setCreatingRoomFile(false);
-      return;
-    }
-    const cleanName = roomFileName.trim();
-    setCreatingRoomFile(false);
-    setRoomFileName('');
-
-    try {
-      const ext = cleanName.split('.').pop()?.toLowerCase();
-      const lang = ext === 'cpp' || ext === 'h' ? 'cpp' : ext === 'py' ? 'python' : ext === 'java' ? 'java' : 'javascript';
-      await historyService.save(roomCode, {
-        code: '// New file created in room\n',
-        language: lang,
-        label: cleanName,
-      });
-
-      const newVer = version + 1;
-      setCode('// New file created in room\n');
-      setLanguage(lang);
-      setVersion(newVer);
-      emitCodeChange(roomCode, '// New file created in room\n', lang, newVer);
-
-      await fetchSavedFiles();
-      success(`Created room file: ${cleanName}`);
-    } catch (err) {
-      showError('Failed to create file in room');
-    }
+    setHeaderModalState({ isOpen: true, type: 'folder' });
   };
 
   // Handle local file selection
@@ -316,8 +260,6 @@ export function SavedFilesSidebar({
               onSelectFile={handleSelectLocalFile}
               onRefresh={refreshLocalTree}
               onImportToRoom={handleImportToRoom}
-              creationTrigger={creationTrigger}
-              onClearCreationTrigger={() => setCreationTrigger(null)}
             />
           ) : (
             <div className="text-center py-10 px-4 space-y-3">
@@ -341,31 +283,11 @@ export function SavedFilesSidebar({
         ) : (
           /* Room Saved Files List */
           <div className="p-2 space-y-1">
-            {/* Inline Creation Input for Room Files Mode */}
-            {creatingRoomFile && (
-              <div className="flex items-center gap-1.5 py-1 px-2 bg-surface-800 border border-brand-500/60 rounded mb-2">
-                <span className="text-xs">📄</span>
-                <input
-                  ref={roomInputRef}
-                  type="text"
-                  value={roomFileName}
-                  onChange={(e) => setRoomFileName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSubmitRoomFile();
-                    if (e.key === 'Escape') setCreatingRoomFile(false);
-                  }}
-                  onBlur={handleSubmitRoomFile}
-                  placeholder="filename.cpp"
-                  className="bg-surface-900 text-xs font-mono text-white px-1.5 py-0.5 rounded border border-surface-600 outline-none w-full focus:border-brand-400"
-                />
-              </div>
-            )}
-
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Spinner size="sm" />
               </div>
-            ) : files.length === 0 && !creatingRoomFile ? (
+            ) : files.length === 0 ? (
               <div className="text-center py-8 px-3">
                 <div className="w-10 h-10 rounded-xl bg-surface-700/50 flex items-center justify-center mx-auto mb-2 text-slate-500">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -427,6 +349,20 @@ export function SavedFilesSidebar({
           Save As...
         </button>
       </div>
+
+      {/* Create Item Modal for Explorer Header Action */}
+      <CreateItemModal
+        isOpen={headerModalState.isOpen}
+        onClose={() => setHeaderModalState({ ...headerModalState, isOpen: false })}
+        type={headerModalState.type}
+        mode={explorerTab}
+        targetDirHandle={rootDirectoryHandle}
+        rootHandle={rootDirectoryHandle}
+        existingRoomFiles={files}
+        onRefreshLocal={refreshLocalTree}
+        onRefreshRoomFiles={fetchSavedFiles}
+        onSelectLocalFile={handleSelectLocalFile}
+      />
     </div>
   );
 }
