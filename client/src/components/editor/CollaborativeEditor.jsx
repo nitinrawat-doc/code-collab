@@ -6,7 +6,13 @@ import { getSocket } from '../../socket/socketClient';
 import { useToast } from '../../hooks/useToast';
 import { SavedFilesSidebar } from './SavedFilesSidebar';
 import { SaveFileModal } from './SaveFileModal';
+import { GitHubModal } from './GitHubModal';
 import { BottomPanel, PANEL_TABS } from './BottomPanel';
+import {
+  isFileSystemAccessSupported,
+  buildDirectoryTree,
+  writeLocalFile,
+} from '../../services/fileSystem.service';
 
 const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript', ext: 'js' },
@@ -32,11 +38,17 @@ export function CollaborativeEditor({
   executionLoading = false,
 }) {
   const { code, setCode, language, setLanguage, version, setVersion, emitCodeChange, problem } = useRoom();
-  const { success } = useToast();
+  const { success, error: showError } = useToast();
 
   const [showSidebar, setShowSidebar] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showGitHubModal, setShowGitHubModal] = useState(false);
   const [refreshSidebarKey, setRefreshSidebarKey] = useState(0);
+
+  // Local Project Directory Handle & Tree state
+  const [rootDirectoryHandle, setRootDirectoryHandle] = useState(null);
+  const [localTreeNodes, setLocalTreeNodes] = useState([]);
+  const [activeLocalFile, setActiveLocalFile] = useState(null);
 
   const suppressRef = useRef(false);
   const versionRef = useRef(version);
@@ -49,6 +61,51 @@ export function CollaborativeEditor({
   const handleOpenSaveModal = useCallback(() => {
     setShowSaveModal(true);
   }, []);
+
+  // Open Local Folder using Native Directory Picker
+  const handleOpenLocalFolder = async () => {
+    if (!isFileSystemAccessSupported()) {
+      showError('Direct Local Folder Access requires a modern browser supporting the File System Access API.');
+      return;
+    }
+
+    try {
+      const handle = await window.showDirectoryPicker();
+      setRootDirectoryHandle(handle);
+      const nodes = await buildDirectoryTree(handle);
+      setLocalTreeNodes(nodes);
+      setShowSidebar(true);
+      success(`Opened local project: ${handle.name}`);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        showError(`Failed to open folder: ${err.message}`);
+      }
+    }
+  };
+
+  const refreshLocalTree = async () => {
+    if (!rootDirectoryHandle) return;
+    try {
+      const nodes = await buildDirectoryTree(rootDirectoryHandle);
+      setLocalTreeNodes(nodes);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Direct Save to Local File (if active) or Open Save Modal
+  const handleSaveCode = async () => {
+    if (activeLocalFile?.handle) {
+      try {
+        await writeLocalFile(activeLocalFile.handle, code);
+        success(`Saved changes to local disk: ${activeLocalFile.name}`);
+      } catch (err) {
+        showError(`Failed to write to local disk: ${err.message}`);
+      }
+    } else {
+      handleOpenSaveModal();
+    }
+  };
 
   const handleDownloadCode = useCallback(() => {
     const langObj = LANGUAGES.find((l) => l.value === language) || LANGUAGES[0];
@@ -74,12 +131,12 @@ export function CollaborativeEditor({
     }
   }, []);
 
-  // Global Keyboard Shortcuts (Ctrl+S for Save, Ctrl+B for Sidebar, Ctrl+` for Terminal)
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        handleOpenSaveModal();
+        handleSaveCode();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setShowSidebar((prev) => !prev);
@@ -90,7 +147,7 @@ export function CollaborativeEditor({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleOpenSaveModal, setBottomPanelOpen]);
+  }, [handleSaveCode, setBottomPanelOpen]);
 
   const handleEditorChange = useCallback(
     (value) => {
@@ -132,17 +189,14 @@ export function CollaborativeEditor({
     editorRef.current = editor;
     editor.onDidChangeCursorPosition(() => handleCursorChange(editor));
 
-    // Bind Ctrl+S inside Monaco
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      handleOpenSaveModal();
+      handleSaveCode();
     });
 
-    // Bind Ctrl+B inside Monaco (Toggle Sidebar)
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
       setShowSidebar((prev) => !prev);
     });
 
-    // Bind Ctrl+` inside Monaco (Toggle Terminal)
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.US_BACKTICK, () => {
       if (setBottomPanelOpen) setBottomPanelOpen((prev) => !prev);
     });
@@ -162,7 +216,7 @@ export function CollaborativeEditor({
   return (
     <div className="flex flex-col h-full bg-surface-900 overflow-hidden">
       {/* Top Toolbar Header */}
-      <div className="flex items-center gap-2.5 px-3 py-2 border-b border-surface-600 bg-surface-800 flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-600 bg-surface-800 flex-shrink-0">
         {/* Toggle Sidebar Button */}
         <button
           onClick={() => setShowSidebar(!showSidebar)}
@@ -177,6 +231,16 @@ export function CollaborativeEditor({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
           <span className="hidden sm:inline">Files</span>
+        </button>
+
+        {/* Open Local Project / Folder */}
+        <button
+          onClick={handleOpenLocalFolder}
+          title="Open Project Folder from Computer"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-600 transition-all"
+        >
+          <span>📂</span>
+          <span className="hidden md:inline">Open Project</span>
         </button>
 
         {/* Toggle Terminal Panel Button */}
@@ -200,7 +264,7 @@ export function CollaborativeEditor({
           id="language-selector"
           value={language}
           onChange={handleLanguageChange}
-          className="input w-36 py-1 text-xs font-mono"
+          className="input w-32 py-1 text-xs font-mono"
         >
           {LANGUAGES.map((l) => (
             <option key={l.value} value={l.value}>
@@ -209,31 +273,38 @@ export function CollaborativeEditor({
           ))}
         </select>
 
-        {/* Save Code / Save As Button */}
+        {/* Save File Button */}
         <button
-          onClick={handleOpenSaveModal}
-          title="Save File with custom name (Ctrl+S)"
+          onClick={handleSaveCode}
+          title="Save File to Disk or Room (Ctrl+S)"
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-500 hover:bg-brand-600 text-white transition-all shadow-sm active:scale-95"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
           </svg>
-          <span>Save File</span>
-          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono text-brand-200 bg-brand-700/50 rounded">
-            Ctrl+S
-          </kbd>
+          <span>Save</span>
         </button>
 
         {/* Export / Download File Button */}
         <button
           onClick={handleDownloadCode}
-          title="Download file to computer"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-700 hover:bg-surface-600 text-slate-300 hover:text-white border border-surface-600 transition-all"
+          title="Export file to computer"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-700 hover:bg-surface-600 text-slate-300 border border-surface-600 transition-all"
         >
           <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          <span className="hidden md:inline">Export</span>
+          <span className="hidden lg:inline">Export</span>
+        </button>
+
+        {/* GitHub Integration Modal Trigger */}
+        <button
+          onClick={() => setShowGitHubModal(true)}
+          title="Connect GitHub & Push Commits"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-600 transition-all"
+        >
+          <span>🐙</span>
+          <span className="hidden lg:inline">GitHub</span>
         </button>
 
         <div className="flex-1" />
@@ -247,13 +318,19 @@ export function CollaborativeEditor({
 
       {/* Editor & Explorer Body */}
       <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* VS Code Style Saved Files Sidebar */}
+        {/* Saved Files & Local Directory Tree Explorer */}
         <SavedFilesSidebar
           roomCode={roomCode}
           isOpen={showSidebar}
           onToggle={() => setShowSidebar(false)}
           onOpenSaveModal={handleOpenSaveModal}
           refreshKey={refreshSidebarKey}
+          onOpenLocalFolder={handleOpenLocalFolder}
+          rootDirectoryHandle={rootDirectoryHandle}
+          localTreeNodes={localTreeNodes}
+          activeLocalFile={activeLocalFile}
+          setActiveLocalFile={setActiveLocalFile}
+          refreshLocalTree={refreshLocalTree}
         />
 
         {/* Monaco Editor Component */}
@@ -305,6 +382,15 @@ export function CollaborativeEditor({
         currentLanguage={language}
         problemTitle={problem?.title || ''}
         onSaveSuccess={() => setRefreshSidebarKey((prev) => prev + 1)}
+      />
+
+      {/* GitHub Commit & Push Modal */}
+      <GitHubModal
+        isOpen={showGitHubModal}
+        onClose={() => setShowGitHubModal(false)}
+        currentCode={code}
+        currentLanguage={language}
+        roomCode={roomCode}
       />
     </div>
   );

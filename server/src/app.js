@@ -63,7 +63,7 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Bypass-Tunnel-Reminder', 'bypass-tunnel-reminder'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Bypass-Tunnel-Reminder', 'bypass-tunnel-reminder', 'x-github-token', 'X-GitHub-Token'],
   })
 );
 
@@ -107,6 +107,8 @@ app.get('/api/network-info', async (req, res) => {
   });
 });
 
+const githubRoutes = require('./routes/github.routes');
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -116,6 +118,7 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/execute', executeRoutes);
 app.use('/api/invites', inviteRoutes);
+app.use('/api/github', githubRoutes);
 
 // SPA fallback: render index.html for all non-API client routes
 app.get('*', (req, res, next) => {
