@@ -14,7 +14,7 @@ import {
   createLocalDirectory,
   getLanguageFromFileName,
 } from '../../services/fileSystem.service';
-import { historyService } from '../../services/sessionService';
+import { sessionService } from '../../services/sessionService';
 import { useRoom } from '../../context/RoomContext';
 import { useToast } from '../../hooks/useToast';
 
@@ -120,11 +120,8 @@ export function CreateItemModal({
         const lang = getLanguageFromFileName(cleanName);
         const initialCode = type === 'file' ? `// ${cleanName}\n` : '';
 
-        await historyService.save(roomCode, {
-          code: initialCode,
-          language: lang,
-          label: cleanName,
-        });
+        // Correct API call: sessionService.save(roomCode, label)
+        await sessionService.save(roomCode, cleanName);
 
         const newVer = version + 1;
         setCode(initialCode);
@@ -138,7 +135,7 @@ export function CreateItemModal({
 
       onClose();
     } catch (err) {
-      setValidationError(err.message || 'Failed to create item');
+      setValidationError(err.response?.data?.message || err.message || 'Failed to create item');
     } finally {
       setSubmitting(false);
     }

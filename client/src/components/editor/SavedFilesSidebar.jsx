@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { historyService } from '../../services/sessionService';
+import { historyService, sessionService } from '../../services/sessionService';
 import { useRoom } from '../../context/RoomContext';
 import { useToast } from '../../hooks/useToast';
 import { Spinner } from '../ui/Spinner';
@@ -113,11 +112,7 @@ export function SavedFilesSidebar({
       return;
     }
     try {
-      await historyService.save(roomCode, {
-        code,
-        language: activeLocalFile.language || 'javascript',
-        label: activeLocalFile.name || 'Imported File',
-      });
+      await sessionService.save(roomCode, activeLocalFile.name || 'Imported File');
       fetchSavedFiles();
       success(`Imported '${activeLocalFile.name}' to Room Files! Collaborators can now access it.`);
     } catch (err) {
