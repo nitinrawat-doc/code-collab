@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const ALLOWED_LANGUAGES = [
+  'javascript', 'python', 'cpp', 'java',
+  'typescript', 'html', 'css', 'json', 'markdown', 'plaintext', 'shell'
+];
+
 const codingSessionSchema = new mongoose.Schema(
   {
     room: {
@@ -16,7 +21,7 @@ const codingSessionSchema = new mongoose.Schema(
     },
     language: {
       type: String,
-      enum: ['javascript', 'python', 'cpp', 'java'],
+      enum: ALLOWED_LANGUAGES,
       default: 'javascript',
     },
     currentCode: {

@@ -9,6 +9,23 @@ const ApiError = require('../utils/ApiError');
 
 const MAX_VERSIONS_PER_SESSION = 50;
 
+const EXT_LANG_MAP = {
+  js: 'javascript', jsx: 'javascript',
+  ts: 'typescript', tsx: 'typescript',
+  py: 'python',
+  cpp: 'cpp', cc: 'cpp', cxx: 'cpp', c: 'cpp', h: 'cpp', hpp: 'cpp',
+  java: 'java',
+  html: 'html', css: 'css', json: 'json', md: 'markdown', txt: 'plaintext', sh: 'shell'
+};
+
+const getLanguageFromFileName = (fileName = '') => {
+  if (!fileName) return 'javascript';
+  const parts = fileName.split('.');
+  if (parts.length < 2) return 'javascript';
+  const ext = parts.pop().toLowerCase();
+  return EXT_LANG_MAP[ext] || 'javascript';
+};
+
 /**
  * Saves a new code version snapshot.
  */
@@ -22,11 +39,13 @@ const saveVersion = async (roomCode, userId, label = null) => {
   const session = await CodingSession.findOne({ room: room._id });
   if (!session) throw ApiError.notFound('Session not found');
 
+  const targetLang = label ? getLanguageFromFileName(label) : (session.language || 'javascript');
+
   const version = await CodeVersion.create({
     session: session._id,
     room: room._id,
-    code: session.currentCode,
-    language: session.language,
+    code: session.currentCode || '',
+    language: targetLang,
     savedBy: userId,
     label,
   });

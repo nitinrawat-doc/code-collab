@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const ALLOWED_LANGUAGES = [
+  'javascript', 'python', 'cpp', 'java',
+  'typescript', 'html', 'css', 'json', 'markdown', 'plaintext', 'shell'
+];
+
 const codeVersionSchema = new mongoose.Schema(
   {
     session: {
@@ -16,11 +21,11 @@ const codeVersionSchema = new mongoose.Schema(
     },
     code: {
       type: String,
-      required: true,
+      default: '',
     },
     language: {
       type: String,
-      enum: ['javascript', 'python', 'cpp', 'java'],
+      enum: ALLOWED_LANGUAGES,
       required: true,
     },
     savedBy: {
