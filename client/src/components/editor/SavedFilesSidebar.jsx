@@ -132,29 +132,45 @@ export function SavedFilesSidebar({
   };
 
   const handleOpenFile = async (file) => {
-    try {
-      const activeCode = roomCode || room?.roomCode;
-      if (!activeCode) {
-        showError('Room code is missing');
-        return;
+    if (!file) return;
+
+    const activeCode = roomCode || room?.roomCode;
+    const fileLabel = file.label || file.name || 'Saved File';
+    const rawLang = getLanguageFromFileName(fileLabel) || file.language || 'javascript';
+    const targetLang = normalizeLanguage(rawLang);
+
+    // 1. Immediately highlight selected file row in Explorer
+    if (file._id) setActiveRoomFileId(file._id);
+
+    // 2. Determine initial code string from clicked file object
+    const initialCode = file.code !== undefined && file.code !== null ? file.code : '';
+
+    // 3. Immediately set code, language, and version in Monaco Editor
+    const newVer = version + 1;
+    setCode(initialCode);
+    setLanguage(targetLang);
+    setVersion(newVer);
+
+    if (activeCode) {
+      emitCodeChange(activeCode, initialCode, targetLang, newVer);
+    }
+
+    success(`Opened room file: ${fileLabel}`);
+
+    // 4. Async fetch full details if code was empty/unpopulated
+    if (activeCode && file._id && (file.code === undefined || file.code === null)) {
+      try {
+        const { data } = await historyService.get(activeCode, file._id);
+        const v = data?.version || data?.data?.version;
+        if (v && v.code !== undefined) {
+          const freshLang = normalizeLanguage(getLanguageFromFileName(v.label || fileLabel) || v.language || targetLang);
+          setCode(v.code || '');
+          setLanguage(freshLang);
+          emitCodeChange(activeCode, v.code || '', freshLang, newVer);
+        }
+      } catch (err) {
+        // Code already set from file object
       }
-      const { data } = await historyService.get(activeCode, file._id);
-      const v = data.version;
-      if (!v) return;
-
-      const rawLang = getLanguageFromFileName(v.label || file.label || file.name || '') || v.language || 'javascript';
-      const targetLang = normalizeLanguage(rawLang);
-
-      setActiveRoomFileId(file._id);
-      const newVer = version + 1;
-      setCode(v.code || '');
-      setLanguage(targetLang);
-      setVersion(newVer);
-      emitCodeChange(activeCode, v.code || '', targetLang, newVer);
-
-      success(`Opened room file: ${v.label || file.label || 'Saved File'}`);
-    } catch (err) {
-      showError(err.response?.data?.message || err.message || 'Failed to open saved file');
     }
   };
 
