@@ -123,19 +123,24 @@ export function SavedFilesSidebar({
 
   const handleOpenFile = async (file) => {
     try {
-      const { data } = await historyService.get(roomCode, file._id);
+      const activeCode = roomCode || room?.roomCode;
+      if (!activeCode) {
+        showError('Room code is missing');
+        return;
+      }
+      const { data } = await historyService.get(activeCode, file._id);
       const v = data.version;
       if (!v) return;
 
       const newVer = version + 1;
-      setCode(v.code);
-      setLanguage(v.language);
+      setCode(v.code || '');
+      setLanguage(v.language || 'javascript');
       setVersion(newVer);
-      emitCodeChange(roomCode, v.code, v.language, newVer);
+      emitCodeChange(activeCode, v.code || '', v.language || 'javascript', newVer);
 
       success(`Opened room file: ${v.label || 'Saved File'}`);
-    } catch {
-      showError('Failed to open saved file');
+    } catch (err) {
+      showError(err.response?.data?.message || err.message || 'Failed to open saved file');
     }
   };
 

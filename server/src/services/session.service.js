@@ -8,7 +8,9 @@ const ApiError = require('../utils/ApiError');
 const redis = require('../config/redis');
 
 const getSession = async (roomCode, userId) => {
-  const room = await Room.findOne({ roomCode });
+  if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const room = await Room.findOne({ roomCode: normalizedCode });
   if (!room) throw ApiError.notFound('Room not found');
   if (!room.isMember(userId)) throw ApiError.forbidden('Not a member of this room');
 
@@ -19,7 +21,9 @@ const getSession = async (roomCode, userId) => {
 };
 
 const updateCode = async (roomCode, { code, language, version }) => {
-  const room = await Room.findOne({ roomCode });
+  if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const room = await Room.findOne({ roomCode: normalizedCode });
   if (!room) throw ApiError.notFound('Room not found');
 
   const session = await CodingSession.findOne({ room: room._id });
@@ -36,7 +40,7 @@ const updateCode = async (roomCode, { code, language, version }) => {
   await session.save();
 
   // Update Redis cache
-  await redis.setCode(roomCode, code);
+  await redis.setCode(normalizedCode, code);
 
   return { stale: false, session };
 };

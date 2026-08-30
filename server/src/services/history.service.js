@@ -48,7 +48,9 @@ const saveVersion = async (roomCode, userId, label = null) => {
  * Lists code versions for a room (newest first, paginated).
  */
 const listVersions = async (roomCode, userId, { page = 1, limit = 20 } = {}) => {
-  const room = await Room.findOne({ roomCode });
+  if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const room = await Room.findOne({ roomCode: normalizedCode });
   if (!room) throw ApiError.notFound('Room not found');
   if (!room.isMember(userId)) throw ApiError.forbidden('Not a member');
 
@@ -67,7 +69,9 @@ const listVersions = async (roomCode, userId, { page = 1, limit = 20 } = {}) => 
  * Gets a single version.
  */
 const getVersion = async (roomCode, versionId, userId) => {
-  const room = await Room.findOne({ roomCode });
+  if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const room = await Room.findOne({ roomCode: normalizedCode });
   if (!room) throw ApiError.notFound('Room not found');
   if (!room.isMember(userId)) throw ApiError.forbidden('Not a member');
 
@@ -80,7 +84,9 @@ const getVersion = async (roomCode, versionId, userId) => {
  * Restores a previous version to the current session.
  */
 const restoreVersion = async (roomCode, versionId, userId) => {
-  const room = await Room.findOne({ roomCode });
+  if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const room = await Room.findOne({ roomCode: normalizedCode });
   if (!room) throw ApiError.notFound('Room not found');
   if (!room.isMember(userId)) throw ApiError.forbidden('Not a member');
 
