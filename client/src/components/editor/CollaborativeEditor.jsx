@@ -160,9 +160,18 @@ export function CollaborativeEditor({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSaveCode, setBottomPanelOpen]);
 
+  const isProgrammaticRef = useRef(false);
+
+  useEffect(() => {
+    isProgrammaticRef.current = true;
+  }, [code]);
+
   const handleEditorChange = useCallback(
     (value) => {
-      if (suppressRef.current) return;
+      if (isProgrammaticRef.current) {
+        isProgrammaticRef.current = false;
+        return;
+      }
       if (value === undefined) return;
 
       const newVersion = versionRef.current + 1;
@@ -212,17 +221,6 @@ export function CollaborativeEditor({
       if (setBottomPanelOpen) setBottomPanelOpen((prev) => !prev);
     });
   };
-
-  const prevCodeRef = useRef(code);
-  useEffect(() => {
-    if (prevCodeRef.current !== code) {
-      suppressRef.current = true;
-      prevCodeRef.current = code;
-      Promise.resolve().then(() => {
-        suppressRef.current = false;
-      });
-    }
-  });
 
   return (
     <div className="flex flex-col h-full bg-surface-900 overflow-hidden">

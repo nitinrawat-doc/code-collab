@@ -14,7 +14,7 @@ const DEBOUNCE_MS = 1500;
 const registerEditorHandlers = (io, socket) => {
   /**
    * code:change
-   * Client sends updated code. Server validates, updates authoritative state,
+   * Client sends updated code. Server updates authoritative state,
    * and broadcasts to other room members.
    */
   socket.on(EVENTS.CODE_CHANGE, async ({ roomCode, fullCode, language, version }) => {
@@ -30,21 +30,12 @@ const registerEditorHandlers = (io, socket) => {
       const session = await CodingSession.findOne({ room: room._id });
       if (!session) return;
 
-      // Stale write guard
-      if (version < session.version - 1) {
-        // Client is too far behind — send sync
-        socket.emit(EVENTS.CODE_SYNC_RESPONSE, {
-          fullCode: session.currentCode,
-          language: session.language,
-          version: session.version,
-        });
-        return;
-      }
+      const newVersion = Math.max(session.version + 1, (version || 0) + 1);
 
-      // Update in-memory session version
+      // Update in-memory session
       session.currentCode = fullCode;
       if (language) session.language = language;
-      session.version += 1;
+      session.version = newVersion;
 
       // Update Redis cache immediately (fast)
       await redis.setCode(roomCode, fullCode);
