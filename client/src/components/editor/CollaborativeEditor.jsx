@@ -12,6 +12,7 @@ import {
   isFileSystemAccessSupported,
   buildDirectoryTree,
   writeLocalFile,
+  normalizeLanguage,
 } from '../../services/fileSystem.service';
 
 const LANGUAGES = [
@@ -19,6 +20,11 @@ const LANGUAGES = [
   { value: 'python', label: 'Python', ext: 'py' },
   { value: 'cpp', label: 'C++', ext: 'cpp' },
   { value: 'java', label: 'Java', ext: 'java' },
+  { value: 'typescript', label: 'TypeScript', ext: 'ts' },
+  { value: 'html', label: 'HTML', ext: 'html' },
+  { value: 'css', label: 'CSS', ext: 'css' },
+  { value: 'json', label: 'JSON', ext: 'json' },
+  { value: 'markdown', label: 'Markdown', ext: 'md' },
 ];
 
 const MONACO_LANG = {
@@ -26,6 +32,11 @@ const MONACO_LANG = {
   python: 'python',
   cpp: 'cpp',
   java: 'java',
+  typescript: 'typescript',
+  html: 'html',
+  css: 'css',
+  json: 'json',
+  markdown: 'markdown',
 };
 
 export function CollaborativeEditor({
@@ -262,7 +273,7 @@ export function CollaborativeEditor({
         {/* Language Selector */}
         <select
           id="language-selector"
-          value={language}
+          value={normalizeLanguage(language)}
           onChange={handleLanguageChange}
           className="input w-32 py-1 text-xs font-mono"
         >
@@ -337,7 +348,7 @@ export function CollaborativeEditor({
         <div className="flex-1 overflow-hidden h-full">
           <Editor
             height="100%"
-            language={MONACO_LANG[language]}
+            language={MONACO_LANG[normalizeLanguage(language)] || 'javascript'}
             value={code}
             onChange={handleEditorChange}
             onMount={handleEditorMountFull}

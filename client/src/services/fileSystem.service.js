@@ -18,6 +18,8 @@ const EXT_LANG_MAP = {
   tsx: 'typescript',
   py: 'python',
   cpp: 'cpp',
+  cc: 'cpp',
+  cxx: 'cpp',
   c: 'cpp',
   h: 'cpp',
   hpp: 'cpp',
@@ -40,11 +42,27 @@ export const isFileSystemAccessSupported = () => {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
 };
 
+export const normalizeLanguage = (lang = '') => {
+  if (!lang) return 'javascript';
+  const l = lang.toLowerCase().trim();
+  if (l === 'cpp' || l === 'c++' || l === 'cc' || l === 'cxx' || l === 'c' || l === 'h' || l === 'hpp') return 'cpp';
+  if (l === 'py' || l === 'python') return 'python';
+  if (l === 'js' || l === 'jsx' || l === 'javascript') return 'javascript';
+  if (l === 'ts' || l === 'tsx' || l === 'typescript') return 'typescript';
+  if (l === 'java') return 'java';
+  if (l === 'html') return 'html';
+  if (l === 'css') return 'css';
+  if (l === 'json') return 'json';
+  if (l === 'md' || l === 'markdown') return 'markdown';
+  return l;
+};
+
 export const getLanguageFromFileName = (fileName = '') => {
+  if (!fileName) return 'javascript';
   const parts = fileName.split('.');
   if (parts.length < 2) return 'javascript';
   const ext = parts.pop().toLowerCase();
-  return EXT_LANG_MAP[ext] || 'plaintext';
+  return EXT_LANG_MAP[ext] || 'javascript';
 };
 
 export const isBinaryFile = (fileName = '') => {
@@ -69,38 +87,34 @@ export const checkEntryExists = async (dirHandle, entryName) => {
   }
 };
 
-/**
- * Recursively builds hierarchical tree from FileSystemDirectoryHandle
- */
-export const buildDirectoryTree = async (dirHandle, relativePath = '') => {
+export const buildDirectoryTree = async (dirHandle, currentPath = '') => {
   const nodes = [];
 
   for await (const [name, handle] of dirHandle.entries()) {
-    // Ignore hidden files / node_modules for performance
+    // Ignore hidden files and node_modules / git
     if (name.startsWith('.') || name === 'node_modules' || name === 'dist' || name === 'build') {
       continue;
     }
 
-    const currentPath = relativePath ? `${relativePath}/${name}` : name;
+    const nodePath = currentPath ? `${currentPath}/${name}` : name;
 
     if (handle.kind === 'directory') {
-      const children = await buildDirectoryTree(handle, currentPath);
+      const children = await buildDirectoryTree(handle, nodePath);
       nodes.push({
-        id: currentPath,
+        id: nodePath,
         name,
         kind: 'directory',
         handle,
-        relativePath: currentPath,
+        relativePath: nodePath,
         children,
-        isExpanded: false,
       });
     } else {
       nodes.push({
-        id: currentPath,
+        id: nodePath,
         name,
         kind: 'file',
         handle,
-        relativePath: currentPath,
+        relativePath: nodePath,
         language: getLanguageFromFileName(name),
         isBinary: isBinaryFile(name),
       });
@@ -145,10 +159,17 @@ export const createLocalDirectory = async (dirHandle, dirName) => {
   if (exists) {
     throw new Error(`A file or folder named '${dirName}' already exists.`);
   }
-  const subDirHandle = await dirHandle.getDirectoryHandle(dirName, { create: true });
-  return subDirHandle;
+  return await dirHandle.getDirectoryHandle(dirName, { create: true });
 };
 
-export const removeLocalEntry = async (dirHandle, entryName) => {
-  await dirHandle.removeEntry(entryName, { recursive: true });
+export const removeLocalEntry = async (parentDirHandle, relativePath) => {
+  const parts = relativePath.split('/');
+  const targetName = parts.pop();
+
+  let currentDir = parentDirHandle;
+  for (const dirName of parts) {
+    currentDir = await currentDir.getDirectoryHandle(dirName);
+  }
+
+  await currentDir.removeEntry(targetName, { recursive: true });
 };

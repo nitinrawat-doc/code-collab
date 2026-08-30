@@ -7,6 +7,8 @@ import { LocalFolderTree } from './LocalFolderTree';
 import { CreateItemModal } from './CreateItemModal';
 import {
   readLocalFile,
+  getLanguageFromFileName,
+  normalizeLanguage,
 } from '../../services/fileSystem.service';
 
 const LANG_BADGES = {
@@ -14,6 +16,11 @@ const LANG_BADGES = {
   python: { label: 'PY', bg: 'bg-blue-500/20 text-blue-400 border-blue-500/30', ext: 'py' },
   cpp: { label: 'C++', bg: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', ext: 'cpp' },
   java: { label: 'Java', bg: 'bg-orange-500/20 text-orange-400 border-orange-500/30', ext: 'java' },
+  typescript: { label: 'TS', bg: 'bg-blue-600/20 text-blue-300 border-blue-500/30', ext: 'ts' },
+  html: { label: 'HTML', bg: 'bg-red-500/20 text-red-400 border-red-500/30', ext: 'html' },
+  css: { label: 'CSS', bg: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30', ext: 'css' },
+  json: { label: 'JSON', bg: 'bg-amber-500/20 text-amber-400 border-amber-500/30', ext: 'json' },
+  markdown: { label: 'MD', bg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', ext: 'md' },
 };
 
 export function SavedFilesSidebar({
@@ -29,11 +36,12 @@ export function SavedFilesSidebar({
   setActiveLocalFile,
   refreshLocalTree,
 }) {
-  const { setCode, setLanguage, setVersion, emitCodeChange, version, code } = useRoom();
+  const { room, setCode, setLanguage, setVersion, emitCodeChange, version, code } = useRoom();
   const { success, error: showError } = useToast();
 
   const [explorerTab, setExplorerTab] = useState('local'); // 'local' | 'room'
   const [files, setFiles] = useState([]);
+  const [activeRoomFileId, setActiveRoomFileId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
 
@@ -56,17 +64,18 @@ export function SavedFilesSidebar({
   }, []);
 
   const fetchSavedFiles = useCallback(async () => {
-    if (!roomCode) return;
+    if (!roomCode && !room?.roomCode) return;
+    const targetRoomCode = roomCode || room?.roomCode;
     setLoading(true);
     try {
-      const { data } = await historyService.list(roomCode);
+      const { data } = await historyService.list(targetRoomCode);
       setFiles(data.versions || []);
     } catch {
       // ignore
     } finally {
       setLoading(false);
     }
-  }, [roomCode]);
+  }, [roomCode, room]);
 
   useEffect(() => {
     fetchSavedFiles();
@@ -94,11 +103,12 @@ export function SavedFilesSidebar({
 
     try {
       const text = await readLocalFile(node.handle);
+      const targetLang = normalizeLanguage(node.language || getLanguageFromFileName(node.name));
       const newVer = version + 1;
       setCode(text);
-      setLanguage(node.language);
+      setLanguage(targetLang);
       setVersion(newVer);
-      emitCodeChange(roomCode, text, node.language, newVer);
+      emitCodeChange(roomCode || room?.roomCode, text, targetLang, newVer);
       setActiveLocalFile(node);
       success(`Opened local file: ${node.relativePath}`);
     } catch (err) {
@@ -113,7 +123,7 @@ export function SavedFilesSidebar({
       return;
     }
     try {
-      await sessionService.save(roomCode, activeLocalFile.name || 'Imported File');
+      await sessionService.save(roomCode || room?.roomCode, activeLocalFile.name || 'Imported File');
       fetchSavedFiles();
       success(`Imported '${activeLocalFile.name}' to Room Files! Collaborators can now access it.`);
     } catch (err) {
@@ -132,13 +142,17 @@ export function SavedFilesSidebar({
       const v = data.version;
       if (!v) return;
 
+      const rawLang = getLanguageFromFileName(v.label || file.label || file.name || '') || v.language || 'javascript';
+      const targetLang = normalizeLanguage(rawLang);
+
+      setActiveRoomFileId(file._id);
       const newVer = version + 1;
       setCode(v.code || '');
-      setLanguage(v.language || 'javascript');
+      setLanguage(targetLang);
       setVersion(newVer);
-      emitCodeChange(activeCode, v.code || '', v.language || 'javascript', newVer);
+      emitCodeChange(activeCode, v.code || '', targetLang, newVer);
 
-      success(`Opened room file: ${v.label || 'Saved File'}`);
+      success(`Opened room file: ${v.label || file.label || 'Saved File'}`);
     } catch (err) {
       showError(err.response?.data?.message || err.message || 'Failed to open saved file');
     }
@@ -146,7 +160,9 @@ export function SavedFilesSidebar({
 
   const handleDownloadFile = (e, file) => {
     e.stopPropagation();
-    const langInfo = LANG_BADGES[file.language] || LANG_BADGES.javascript;
+    const rawLang = getLanguageFromFileName(file.label || '') || file.language || 'javascript';
+    const normLang = normalizeLanguage(rawLang);
+    const langInfo = LANG_BADGES[normLang] || LANG_BADGES.javascript;
     const defaultName = `file_${file._id.slice(-4)}.${langInfo.ext}`;
     const fileName = file.label
       ? file.label.includes('.')
@@ -300,15 +316,22 @@ export function SavedFilesSidebar({
               </div>
             ) : (
               files.map((file) => {
-                const lang = LANG_BADGES[file.language] || LANG_BADGES.javascript;
+                const rawLang = getLanguageFromFileName(file.label || '') || file.language || 'javascript';
+                const normLang = normalizeLanguage(rawLang);
+                const lang = LANG_BADGES[normLang] || LANG_BADGES.javascript;
                 const fileName = file.label || `file_${file._id.slice(-4)}.${lang.ext}`;
                 const timeAgo = new Date(file.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const isActive = activeRoomFileId === file._id;
 
                 return (
                   <div
                     key={file._id}
                     onClick={() => handleOpenFile(file)}
-                    className="group flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-700/80 border border-transparent hover:border-surface-600 transition-all cursor-pointer text-xs"
+                    className={`group flex items-center gap-2 px-2.5 py-2 rounded-lg border transition-all cursor-pointer text-xs ${
+                      isActive
+                        ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 font-semibold'
+                        : 'hover:bg-surface-700/80 border-transparent hover:border-surface-600'
+                    }`}
                   >
                     <span className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border ${lang.bg}`}>
                       {lang.label}
@@ -357,7 +380,7 @@ export function SavedFilesSidebar({
         onClose={() => setHeaderModalState({ ...headerModalState, isOpen: false })}
         type={headerModalState.type}
         mode={explorerTab}
-        roomCode={roomCode}
+        roomCode={roomCode || room?.roomCode}
         targetDirHandle={rootDirectoryHandle}
         rootHandle={rootDirectoryHandle}
         existingRoomFiles={files}
