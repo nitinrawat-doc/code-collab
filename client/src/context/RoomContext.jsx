@@ -161,10 +161,11 @@ export function RoomProvider({ children }) {
 
   const sendChat = useCallback((roomCode, content) => {
     const socket = socketRef.current || getSocket();
-    if (socket) {
-      socket.emit(EVENTS.CHAT_SEND, { roomCode, content });
+    const targetCode = roomCode || currentRoomCodeRef.current || room?.roomCode;
+    if (socket && targetCode && content && content.trim()) {
+      socket.emit(EVENTS.CHAT_SEND, { roomCode: targetCode, content: content.trim() });
     }
-  }, []);
+  }, [room]);
 
   const emitCursor = useCallback((roomCode, position) => {
     const socket = socketRef.current || getSocket();

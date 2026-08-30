@@ -7,7 +7,7 @@ const CodingSession = require('../../models/CodingSession');
 const ChatMessage = require('../../models/ChatMessage');
 const EVENTS = require('../events');
 const redis = require('../../config/redis');
-const { broadcastPresence, assignColor } = require('./presence.handler');
+const { broadcastPresence } = require('./presence.handler');
 
 const registerRoomHandlers = (io, socket) => {
   /**
@@ -19,7 +19,9 @@ const registerRoomHandlers = (io, socket) => {
     try {
       if (!roomCode) return socket.emit(EVENTS.ERROR, { message: 'roomCode required' });
 
-      const room = await Room.findOne({ roomCode })
+      const normalizedCode = roomCode.trim().toUpperCase();
+
+      const room = await Room.findOne({ roomCode: normalizedCode })
         .populate('members.user', 'name email avatar')
         .populate('currentProblem', 'title slug difficulty starterCode constraints examples description');
 
@@ -29,12 +31,17 @@ const registerRoomHandlers = (io, socket) => {
         return socket.emit(EVENTS.ERROR, { message: 'You are not a member of this room' });
       }
 
-      // Join the Socket.IO room namespace
+      // Join the Socket.IO room namespace (both normalized and original)
+      socket.join(room.roomCode);
+      socket.join(normalizedCode);
       socket.join(roomCode);
-      socket.data.roomCode = roomCode;
+      socket.data.roomCode = room.roomCode;
 
       // Track presence in Redis/memory
-      await redis.addPresence(roomCode, socket.user._id.toString());
+      await redis.addPresence(room.roomCode, socket.user._id.toString());
+      if (normalizedCode !== room.roomCode) {
+        await redis.addPresence(normalizedCode, socket.user._id.toString());
+      }
 
       // Fetch current session code
       const session = await CodingSession.findOne({ room: room._id });
@@ -56,9 +63,12 @@ const registerRoomHandlers = (io, socket) => {
       });
 
       // Broadcast updated presence to everyone in room
-      await broadcastPresence(io, roomCode);
+      await broadcastPresence(io, room.roomCode);
+      if (normalizedCode !== room.roomCode) {
+        await broadcastPresence(io, normalizedCode);
+      }
 
-      console.log(`[socket] ${socket.user.name} joined room ${roomCode}`);
+      console.log(`[socket] ${socket.user.name} joined room ${room.roomCode}`);
     } catch (err) {
       console.error('[socket] room:join error:', err.message);
       socket.emit(EVENTS.ERROR, { message: 'Failed to join room' });
@@ -84,9 +94,16 @@ const registerRoomHandlers = (io, socket) => {
 
 const handleLeave = async (io, socket, roomCode) => {
   try {
+    if (!roomCode) return;
+    const normalizedCode = roomCode.trim().toUpperCase();
     socket.leave(roomCode);
+    socket.leave(normalizedCode);
     await redis.removePresence(roomCode, socket.user._id.toString());
+    await redis.removePresence(normalizedCode, socket.user._id.toString());
     await broadcastPresence(io, roomCode);
+    if (normalizedCode !== roomCode) {
+      await broadcastPresence(io, normalizedCode);
+    }
     console.log(`[socket] ${socket.user.name} left room ${roomCode}`);
   } catch (err) {
     console.error('[socket] leave error:', err.message);
