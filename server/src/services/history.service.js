@@ -102,4 +102,20 @@ const restoreVersion = async (roomCode, versionId, userId) => {
   return { session, version };
 };
 
-module.exports = { saveVersion, listVersions, getVersion, restoreVersion };
+/**
+ * Deletes a single version snapshot.
+ */
+const deleteVersion = async (roomCode, versionId, userId) => {
+  if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const room = await Room.findOne({ roomCode: normalizedCode });
+  if (!room) throw ApiError.notFound('Room not found');
+  if (!room.isMember(userId)) throw ApiError.forbidden('Not a member');
+
+  const version = await CodeVersion.findOneAndDelete({ _id: versionId, room: room._id });
+  if (!version) throw ApiError.notFound('Version snapshot not found');
+
+  return { success: true, deletedId: versionId };
+};
+
+module.exports = { saveVersion, listVersions, getVersion, restoreVersion, deleteVersion };

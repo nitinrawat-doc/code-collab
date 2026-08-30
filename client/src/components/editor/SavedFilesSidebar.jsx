@@ -44,6 +44,7 @@ export function SavedFilesSidebar({
   const [activeRoomFileId, setActiveRoomFileId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [menuOpenFileId, setMenuOpenFileId] = useState(null);
 
   // Modal creation state for Explorer Header + button
   const [headerModalState, setHeaderModalState] = useState({
@@ -58,6 +59,7 @@ export function SavedFilesSidebar({
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setShowAddMenu(false);
       }
+      setMenuOpenFileId(null);
     };
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
@@ -163,8 +165,26 @@ export function SavedFilesSidebar({
     }
   };
 
+  const handleDeleteRoomFile = async (e, file) => {
+    if (e) e.stopPropagation();
+    const fileName = file.label || `file_${file._id.slice(-4)}`;
+    if (!window.confirm(`Are you sure you want to delete '${fileName}'?`)) return;
+
+    try {
+      const activeCode = roomCode || room?.roomCode;
+      await historyService.delete(activeCode, file._id);
+      success(`Deleted room file: ${fileName}`);
+      if (activeRoomFileId === file._id) {
+        setActiveRoomFileId(null);
+      }
+      fetchSavedFiles();
+    } catch (err) {
+      showError(err.response?.data?.message || err.message || 'Failed to delete file');
+    }
+  };
+
   const handleDownloadFile = (e, file) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     const rawLang = getLanguageFromFileName(file.label || '') || file.language || 'javascript';
     const normLang = normalizeLanguage(rawLang);
     const langInfo = LANG_BADGES[normLang] || LANG_BADGES.javascript;
@@ -351,15 +371,47 @@ export function SavedFilesSidebar({
                       </p>
                     </div>
 
-                    <button
-                      onClick={(e) => handleDownloadFile(e, file)}
-                      title="Download File"
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface-600 text-slate-400 hover:text-cyan-400 transition-all"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                    </button>
+                    {/* 3-Dot Options Button & Dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpenFileId((prev) => (prev === file._id ? null : file._id));
+                        }}
+                        title="More Options"
+                        className="p-1 rounded hover:bg-surface-600 text-slate-400 hover:text-white transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                        </svg>
+                      </button>
+
+                      {menuOpenFileId === file._id && (
+                        <div
+                          className="absolute right-0 top-7 z-50 w-36 bg-surface-800 border border-surface-600 rounded-lg shadow-xl py-1 text-xs font-mono text-slate-200"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={(e) => {
+                              setMenuOpenFileId(null);
+                              handleDownloadFile(e, file);
+                            }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-surface-700 flex items-center gap-2"
+                          >
+                            <span>📥</span> Download
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              setMenuOpenFileId(null);
+                              handleDeleteRoomFile(e, file);
+                            }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-red-500/20 text-red-400 flex items-center gap-2"
+                          >
+                            <span>🗑️</span> Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })

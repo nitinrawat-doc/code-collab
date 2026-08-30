@@ -36,4 +36,15 @@ const restoreVersion = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { listVersions, getVersion, restoreVersion };
+const deleteVersion = async (req, res, next) => {
+  try {
+    const data = await historyService.deleteVersion(
+      req.params.roomCode,
+      req.params.versionId,
+      req.user._id
+    );
+    res.json({ success: true, ...data });
+  } catch (err) { next(err); }
+};
+
+module.exports = { listVersions, getVersion, restoreVersion, deleteVersion };
