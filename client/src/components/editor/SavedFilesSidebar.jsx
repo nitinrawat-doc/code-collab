@@ -36,7 +36,7 @@ export function SavedFilesSidebar({
   setActiveLocalFile,
   refreshLocalTree,
 }) {
-  const { room, setCode, setLanguage, setVersion, emitCodeChange, version, code } = useRoom();
+  const { room, setCode, setLanguage, setVersion, emitCodeChange, switchFile, version, code } = useRoom();
   const { success, error: showError } = useToast();
 
   const [explorerTab, setExplorerTab] = useState('local'); // 'local' | 'room'
@@ -104,12 +104,9 @@ export function SavedFilesSidebar({
     try {
       const text = await readLocalFile(node.handle);
       const targetLang = normalizeLanguage(node.language || getLanguageFromFileName(node.name));
-      const newVer = version + 1;
-      setCode(text);
-      setLanguage(targetLang);
-      setVersion(newVer);
-      emitCodeChange(roomCode || room?.roomCode, text, targetLang, newVer);
+      const fileKey = node.relativePath || node.id || node.name;
       setActiveLocalFile(node);
+      switchFile(fileKey, text, targetLang);
       success(`Opened local file: ${node.relativePath}`);
     } catch (err) {
       showError(`Failed to read file: ${err.message}`);
@@ -134,42 +131,34 @@ export function SavedFilesSidebar({
   const handleOpenFile = async (file) => {
     if (!file) return;
 
-    const activeCode = roomCode || room?.roomCode;
-    const fileLabel = file.label || file.name || 'Saved File';
+    const fileLabel = file.label || file.name || file._id || 'Saved File';
+    const fileKey = file._id || fileLabel;
     const rawLang = getLanguageFromFileName(fileLabel) || file.language || 'javascript';
     const targetLang = normalizeLanguage(rawLang);
 
-    // 1. Immediately highlight selected file row in Explorer
+    // 1. Highlight file in sidebar
     if (file._id) setActiveRoomFileId(file._id);
 
-    // 2. Determine initial code string from clicked file object
+    // 2. Determine initial code string
     const initialCode = file.code !== undefined && file.code !== null ? file.code : '';
 
-    // 3. Immediately set code, language, and version in Monaco Editor
-    const newVer = version + 1;
-    setCode(initialCode);
-    setLanguage(targetLang);
-    setVersion(newVer);
-
-    if (activeCode) {
-      emitCodeChange(activeCode, initialCode, targetLang, newVer);
-    }
+    // 3. Switch file via RoomContext switchFile helper (preserves edits & updates Monaco)
+    switchFile(fileKey, initialCode, targetLang);
 
     success(`Opened room file: ${fileLabel}`);
 
-    // 4. Async fetch full details if code was empty/unpopulated
+    // 4. Background fetch if code was not loaded on initial file object
+    const activeCode = roomCode || room?.roomCode;
     if (activeCode && file._id && (file.code === undefined || file.code === null)) {
       try {
         const { data } = await historyService.get(activeCode, file._id);
         const v = data?.version || data?.data?.version;
         if (v && v.code !== undefined) {
           const freshLang = normalizeLanguage(getLanguageFromFileName(v.label || fileLabel) || v.language || targetLang);
-          setCode(v.code || '');
-          setLanguage(freshLang);
-          emitCodeChange(activeCode, v.code || '', freshLang, newVer);
+          switchFile(fileKey, v.code || '', freshLang);
         }
       } catch (err) {
-        // Code already set from file object
+        // Fallback already active
       }
     }
   };

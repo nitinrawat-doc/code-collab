@@ -17,6 +17,10 @@ export function RoomProvider({ children }) {
   const [remoteCursors, setRemoteCursors] = useState({});
   const [isConnected, setIsConnected] = useState(false);
 
+  // In-memory cache for file contents per active file key
+  const fileContentMapRef = useRef({});
+  const activeFileKeyRef = useRef(null);
+
   // Refs to avoid stale closures in socket callbacks
   const socketRef = useRef(null);
   const currentRoomCodeRef = useRef(null);
@@ -56,13 +60,21 @@ export function RoomProvider({ children }) {
     setRoom(data.room);
 
     // Register listeners BEFORE emitting room:join
-    // so we don't miss the room:state event
-
     socket.on(EVENTS.ROOM_STATE, ({ code: c, language: l, version: v, problem: p, chatHistory }) => {
-      setCode(c ?? '// Start coding here\n');
-      setLanguage(l ?? 'javascript');
+      const initCode = c ?? '// Start coding here\n';
+      const initLang = l ?? 'javascript';
+      setCode(initCode);
+      setLanguage(initLang);
       setVersion(v ?? 0);
       setProblem(p ?? null);
+
+      if (activeFileKeyRef.current) {
+        fileContentMapRef.current[activeFileKeyRef.current] = {
+          code: initCode,
+          language: initLang,
+        };
+      }
+
       if (chatHistory && Array.isArray(chatHistory)) {
         const formatted = chatHistory.map((m) => ({
           id: (m._id || m.id || '').toString(),
@@ -84,20 +96,33 @@ export function RoomProvider({ children }) {
       setOnlineUsers(users ?? []);
     });
 
-    // CODE_UPDATE from other clients — update code without triggering emit
+    // CODE_UPDATE from other clients — update code & cache without triggering emit loop
     socket.on(EVENTS.CODE_UPDATE, ({ fullCode, language: l, version: v }) => {
       setCode(fullCode);
-      setLanguage(l);
+      if (l) setLanguage(l);
       setVersion(v);
+
+      if (activeFileKeyRef.current) {
+        fileContentMapRef.current[activeFileKeyRef.current] = {
+          code: fullCode,
+          language: l || language,
+        };
+      }
     });
 
     socket.on(EVENTS.CODE_SYNC_RESPONSE, ({ fullCode, language: l, version: v }) => {
       setCode(fullCode);
-      setLanguage(l);
+      if (l) setLanguage(l);
       setVersion(v);
+
+      if (activeFileKeyRef.current) {
+        fileContentMapRef.current[activeFileKeyRef.current] = {
+          code: fullCode,
+          language: l || language,
+        };
+      }
     });
 
-    socket.off(EVENTS.CHAT_MESSAGE);
     socket.on(EVENTS.CHAT_MESSAGE, (msg) => {
       if (!msg) return;
       const targetId = (msg.id || msg._id || '').toString();
@@ -122,10 +147,6 @@ export function RoomProvider({ children }) {
       window.location.href = '/dashboard';
     });
 
-    socket.on(EVENTS.MEMBER_REMOVED, ({ userId: removedId }) => {
-      // The RoomPage will handle redirect for the affected user
-    });
-
     socket.on(EVENTS.ERROR, ({ message }) => {
       console.error('[socket] Room error:', message);
     });
@@ -133,7 +154,7 @@ export function RoomProvider({ children }) {
     // Now join the socket room
     socket.emit(EVENTS.ROOM_JOIN, { roomCode });
     setIsConnected(true);
-  }, [removeRoomListeners]);
+  }, [removeRoomListeners, language]);
 
   const leaveRoom = useCallback((roomCode) => {
     const socket = socketRef.current || getSocket();
@@ -143,6 +164,9 @@ export function RoomProvider({ children }) {
     }
     socketRef.current = null;
     currentRoomCodeRef.current = null;
+    fileContentMapRef.current = {};
+    activeFileKeyRef.current = null;
+
     setRoom(null);
     setOnlineUsers([]);
     setChatMessages([]);
@@ -157,7 +181,48 @@ export function RoomProvider({ children }) {
     if (socket?.connected) {
       socket.emit(EVENTS.CODE_CHANGE, { roomCode, fullCode, language: lang, version: ver });
     }
+
+    if (activeFileKeyRef.current) {
+      fileContentMapRef.current[activeFileKeyRef.current] = {
+        code: fullCode,
+        language: lang,
+      };
+    }
   }, []);
+
+  const switchFile = useCallback((fileKey, initialCode, initialLang) => {
+    // 1. Save current editor state for previous active file key
+    if (activeFileKeyRef.current && code !== undefined) {
+      fileContentMapRef.current[activeFileKeyRef.current] = {
+        code,
+        language,
+      };
+    }
+
+    // 2. Set new active file key
+    activeFileKeyRef.current = fileKey;
+
+    // 3. Resolve target code & language from in-memory cache or initial values
+    const cached = fileContentMapRef.current[fileKey];
+    const targetCode = cached?.code !== undefined ? cached.code : (initialCode ?? '');
+    const targetLang = cached?.language || initialLang || 'javascript';
+
+    fileContentMapRef.current[fileKey] = {
+      code: targetCode,
+      language: targetLang,
+    };
+
+    setCode(targetCode);
+    setLanguage(targetLang);
+
+    const roomCode = currentRoomCodeRef.current || room?.roomCode;
+    if (roomCode) {
+      const socket = socketRef.current || getSocket();
+      if (socket?.connected) {
+        socket.emit(EVENTS.CODE_CHANGE, { roomCode, fullCode: targetCode, language: targetLang, version });
+      }
+    }
+  }, [code, language, room, version]);
 
   const sendChat = useCallback((roomCode, content) => {
     const socket = socketRef.current || getSocket();
@@ -178,8 +243,8 @@ export function RoomProvider({ children }) {
     <RoomContext.Provider value={{
       room, setRoom, onlineUsers, code, setCode, language, setLanguage,
       version, setVersion, problem, setProblem, chatMessages, executionResult,
-      setExecutionResult, remoteCursors, isConnected,
-      joinRoom, leaveRoom, emitCodeChange, sendChat, emitCursor,
+      setExecutionResult, remoteCursors, isConnected, activeFileKey: activeFileKeyRef.current,
+      joinRoom, leaveRoom, emitCodeChange, switchFile, sendChat, emitCursor,
     }}>
       {children}
     </RoomContext.Provider>
