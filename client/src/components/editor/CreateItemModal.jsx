@@ -13,6 +13,7 @@ import {
   createLocalFile,
   createLocalDirectory,
   getLanguageFromFileName,
+  normalizeLanguage,
 } from '../../services/fileSystem.service';
 import { sessionService } from '../../services/sessionService';
 import { useRoom } from '../../context/RoomContext';
@@ -31,7 +32,7 @@ export function CreateItemModal({
   onRefreshRoomFiles,
   onSelectLocalFile,
 }) {
-  const { room, setCode, setLanguage, setVersion, emitCodeChange, version } = useRoom();
+  const { room, switchFile } = useRoom();
   const { success, error: showError } = useToast();
 
   const [name, setName] = useState('');
@@ -127,17 +128,15 @@ export function CreateItemModal({
           return;
         }
 
-        const lang = getLanguageFromFileName(cleanName);
+        const rawLang = getLanguageFromFileName(cleanName);
+        const normLang = normalizeLanguage(rawLang);
         const initialCode = type === 'file' ? `// ${cleanName}\n` : '';
 
-        // Save version to active room code
-        await sessionService.save(activeRoomCode, cleanName);
+        // Switch to newly created file first (preserves previous active file's code)
+        switchFile(cleanName, initialCode, normLang);
 
-        const newVer = version + 1;
-        setCode(initialCode);
-        setLanguage(lang);
-        setVersion(newVer);
-        emitCodeChange(activeRoomCode, initialCode, lang, newVer);
+        // Persist new file snapshot to server
+        await sessionService.save(activeRoomCode, cleanName, initialCode);
 
         if (onRefreshRoomFiles) await onRefreshRoomFiles();
         success(`Created room file: ${cleanName}`);

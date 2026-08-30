@@ -16,7 +16,8 @@ const saveVersion = async (req, res, next) => {
     const version = await historyService.saveVersion(
       req.params.roomCode,
       req.user._id,
-      req.body.label || null
+      req.body.label || null,
+      req.body.code !== undefined ? req.body.code : null
     );
     res.status(201).json({ success: true, version });
   } catch (err) { next(err); }

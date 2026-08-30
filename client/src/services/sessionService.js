@@ -2,7 +2,7 @@ import api from './api';
 
 export const sessionService = {
   get: (roomCode) => api.get(`/sessions/room/${roomCode}`),
-  save: (roomCode, label) => api.post(`/sessions/room/${roomCode}/save`, { label }),
+  save: (roomCode, label, code = null) => api.post(`/sessions/room/${roomCode}/save`, { label, code }),
 };
 
 export const historyService = {

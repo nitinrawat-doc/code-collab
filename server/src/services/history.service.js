@@ -29,7 +29,7 @@ const getLanguageFromFileName = (fileName = '') => {
 /**
  * Saves a new code version snapshot.
  */
-const saveVersion = async (roomCode, userId, label = null) => {
+const saveVersion = async (roomCode, userId, label = null, customCode = null) => {
   if (!roomCode || typeof roomCode !== 'string') throw ApiError.badRequest('Room code is required');
   const normalizedCode = roomCode.trim().toUpperCase();
   const room = await Room.findOne({ roomCode: normalizedCode });
@@ -40,11 +40,20 @@ const saveVersion = async (roomCode, userId, label = null) => {
   if (!session) throw ApiError.notFound('Session not found');
 
   const targetLang = label ? getLanguageFromFileName(label) : (session.language || 'javascript');
+  const targetCode = customCode !== null && customCode !== undefined ? customCode : session.currentCode;
+
+  // Update session currentCode & language if custom code provided for new file
+  if (customCode !== null && customCode !== undefined) {
+    session.currentCode = customCode;
+    session.language = targetLang;
+    session.version += 1;
+    await session.save();
+  }
 
   const version = await CodeVersion.create({
     session: session._id,
     room: room._id,
-    code: session.currentCode || '',
+    code: targetCode || '',
     language: targetLang,
     savedBy: userId,
     label,
