@@ -242,16 +242,6 @@ export function CollaborativeEditor({
           <span className="hidden sm:inline">Files</span>
         </button>
 
-        {/* Open Local Project / Folder */}
-        <button
-          onClick={handleOpenLocalFolder}
-          title="Open Project Folder from Computer"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-600 transition-all"
-        >
-          <span>📂</span>
-          <span className="hidden md:inline">Open Project</span>
-        </button>
-
         {/* Toggle Terminal Panel Button */}
         <button
           onClick={() => setBottomPanelOpen && setBottomPanelOpen((prev) => !prev)}

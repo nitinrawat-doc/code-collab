@@ -256,15 +256,13 @@ export function SavedFilesSidebar({
             </div>
           )}
 
-          {/* Open Local Folder */}
+          {/* Open Local Folder — styled same as + button, right beside it */}
           <button
             onClick={onOpenLocalFolder}
-            title="Open Local Folder"
-            className="p-1 rounded hover:bg-surface-700 text-slate-300 hover:text-white transition-colors"
+            title="Open Local Folder / Project"
+            className="p-1 rounded hover:bg-surface-700 text-brand-400 hover:text-white transition-colors text-sm font-bold"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-            </svg>
+            📂
           </button>
 
           {/* Close sidebar */}
