@@ -142,7 +142,10 @@ export function SavedFilesSidebar({
     if (!file) return;
 
     const fileLabel = file.label || file.name || file._id || 'Saved File';
-    const fileKey = file._id || fileLabel;
+    // KEY FIX: use fileLabel (filename) as the cache key — same key CreateItemModal uses
+    // when it calls switchFile(cleanName, ...). Using MongoDB _id here caused a cache miss
+    // because the in-memory fileContentMapRef was stored under the filename, not the _id.
+    const fileKey = fileLabel;
     const rawLang = getLanguageFromFileName(fileLabel) || file.language || 'javascript';
     const targetLang = normalizeLanguage(rawLang);
 
@@ -154,7 +157,8 @@ export function SavedFilesSidebar({
     switchFile(fileKey, initialCode, targetLang);
     success(`Opened: ${fileLabel}`);
 
-    // Background fetch if code was not populated on the list object
+    // Background fetch ONLY if the list response had no code AND the cache also missed
+    // (i.e. truly no content available at all — new file never typed in).
     const rc = roomCode || room?.roomCode;
     if (rc && file._id && (file.code === undefined || file.code === null)) {
       try {
@@ -162,10 +166,12 @@ export function SavedFilesSidebar({
         const v = data?.version || data?.data?.version;
         if (v && v.code !== undefined) {
           const freshLang = normalizeLanguage(getLanguageFromFileName(v.label || fileLabel) || v.language || targetLang);
+          // Only call switchFile if the cache still doesn't have this file's content
+          // (don't override user's typed code that was loaded from cache)
           switchFile(fileKey, v.code || '', freshLang);
         }
       } catch {
-        // fallback already active
+        // fallback already active — cache or initialCode is sufficient
       }
     }
   };
